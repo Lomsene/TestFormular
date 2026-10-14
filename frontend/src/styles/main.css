@@ -1,0 +1,240 @@
+/* Gestaltung angelehnt an den Teams-Kalender, Akzentfarben aus dem DHSH-Logo. */
+:root {
+  --brand-magenta: #eb2385;
+  --brand-violet: #735da6;
+  --brand-blue: #2e89c0;
+  --brand-teal: #78c4c2;
+  --brand-gradient: linear-gradient(90deg, #eb2385, #735da6 35%, #2e89c0 70%, #90cdbe);
+
+  --accent: #1f6fa8;
+  --accent-hover: #185a8a;
+  --accent-soft: #e6f1f9;
+  --focus: #1f6fa8;
+
+  --bg: #f3f3f5;
+  --surface: #ffffff;
+  --surface-alt: #f8f8fa;
+  --border: #dcdce0;
+  --border-strong: #b9b9c0;
+  --text: #1f1f24;
+  --text-muted: #5c5c66;
+
+  /* Statusfarben: grün = passt, gelb = vielleicht/eingeschränkt, rot = passt nicht */
+  --st-preferred: #1e8e3e;
+  --st-preferred-bg: #c9ecd3;
+  --st-available: #43a047;
+  --st-available-bg: #eaf6ec;
+  --st-online: #b98900;
+  --st-online-bg: #fdf0c4;
+  --st-unavailable: #c62828;
+  --st-unavailable-bg: #fbd9d9;
+
+  --error: #c62828;
+  --error-bg: #fdecec;
+  --warning: #8a6100;
+  --warning-bg: #fff6dc;
+  --info-bg: #eef4fb;
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 8px rgb(0 0 0 / 5%);
+
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- Bausteine ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px 24px;
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.section-head h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.step {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transform: translateY(-1px);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 4px 0 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > label,
+.label {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.req {
+  color: var(--error);
+  margin-left: 2px;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 10px;
+  min-height: 40px;
+}
+
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: var(--text-muted);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--error);
+  background: var(--error-bg);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--surface-alt);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-link {
+  border: none;
+  background: none;
+  padding: 4px 0;
+  min-height: 0;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.notice {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 0.92rem;
+  border-left: 4px solid;
+}
+
+.notice-info {
+  background: var(--info-bg);
+  border-color: var(--accent);
+}
+
+.notice-warning {
+  background: var(--warning-bg);
+  border-color: #e0a800;
+}
+
+.notice-error {
+  background: var(--error-bg);
+  border-color: var(--error);
+}
+
+.notice-success {
+  background: var(--st-available-bg);
+  border-color: var(--st-preferred);
+}
