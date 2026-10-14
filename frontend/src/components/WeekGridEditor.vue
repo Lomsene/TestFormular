@@ -7,7 +7,7 @@ import { slotCount } from '../domain/windows'
 
 /**
  * Wochenraster zum „Ausmalen“ der Verfügbarkeit: Pinsel wählen, dann mit gedrückter
- * Maustaste (oder Finger) über die Zeiten ziehen. Tastatur: Tab zu einer Zelle,
+ * Maustaste (oder Finger) einen Bereich aufziehen – über mehrere Tage hinweg möglich. Tastatur: Tab zu einer Zelle,
  * Leertaste/Enter setzt den gewählten Pinsel, Pfeiltasten bewegen den Fokus.
  */
 const props = defineProps<{ grid: WeekGrid; config: PlanningConfig }>()
@@ -16,7 +16,10 @@ const brush = ref<GridMark>('AVAILABLE')
 const painting = ref(false)
 
 const slots = computed(() =>
-  Array.from({ length: slotCount(props.config) }, (_, i) => props.config.dayStart + i * props.config.slotMinutes),
+  Array.from(
+    { length: slotCount(props.config) },
+    (_, i) => props.config.dayStart + i * props.config.slotMinutes,
+  ),
 )
 
 const BRUSHES: { mark: GridMark; label: string; key: string }[] = [
@@ -29,10 +32,32 @@ function set(day: Weekday, i: number, mark: GridMark = brush.value) {
   props.grid[day][i] = mark
 }
 
+/** Startzelle und Rasterstand bei Beginn des Ziehens – für die Rechteck-Auswahl. */
+let anchor: { day: number; slot: number; before: WeekGrid } | null = null
+
+function cloneGrid(grid: WeekGrid): WeekGrid {
+  return Object.fromEntries(Object.entries(grid).map(([d, v]) => [d, [...v]])) as WeekGrid
+}
+
 function start(day: Weekday, i: number, event: PointerEvent) {
   event.preventDefault()
   painting.value = true
+  anchor = { day: props.config.teachingDays.indexOf(day), slot: i, before: cloneGrid(props.grid) }
   set(day, i)
+}
+
+/** Wie im Teams-Kalender: Alles zwischen Start- und aktueller Zelle wird markiert. */
+function paintRect(toDay: number, toSlot: number) {
+  if (!anchor) return
+  const days = props.config.teachingDays
+  const [d0, d1] = [Math.min(anchor.day, toDay), Math.max(anchor.day, toDay)]
+  const [s0, s1] = [Math.min(anchor.slot, toSlot), Math.max(anchor.slot, toSlot)]
+  days.forEach((d, di) => {
+    props.grid[d].forEach((_, si) => {
+      const inside = di >= d0 && di <= d1 && si >= s0 && si <= s1
+      props.grid[d][si] = inside ? brush.value : anchor!.before[d][si]!
+    })
+  })
 }
 
 /** Unter dem Zeiger liegende Zelle bestimmen – funktioniert auch bei Touch. */
@@ -41,11 +66,12 @@ function move(event: PointerEvent) {
   const el = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null
   const day = el?.dataset.day as Weekday | undefined
   const slot = el?.dataset.slot
-  if (day && slot !== undefined) set(day, Number(slot))
+  if (day && slot !== undefined) paintRect(props.config.teachingDays.indexOf(day), Number(slot))
 }
 
 function stop() {
   painting.value = false
+  anchor = null
 }
 window.addEventListener('pointerup', stop)
 onBeforeUnmount(() => window.removeEventListener('pointerup', stop))
@@ -119,14 +145,22 @@ const markLabel: Record<GridMark, string> = {
     >
       <div class="corner" />
       <div v-for="d in config.teachingDays" :key="d" class="dayhead">
-        <span class="full">{{ WEEKDAY_LABEL[d] }}</span><span class="short">{{ WEEKDAY_SHORT[d] }}</span>
-        <button type="button" class="dayfill" :title="`Ganzen ${WEEKDAY_LABEL[d]} mit Pinsel füllen`" @click="fillDay(d, brush)">
+        <span class="full">{{ WEEKDAY_LABEL[d] }}</span
+        ><span class="short">{{ WEEKDAY_SHORT[d] }}</span>
+        <button
+          type="button"
+          class="dayfill"
+          :title="`Ganzen ${WEEKDAY_LABEL[d]} mit Pinsel füllen`"
+          @click="fillDay(d, brush)"
+        >
           ganzer Tag
         </button>
       </div>
 
       <template v-for="(t, i) in slots" :key="t">
-        <div class="time" :class="{ full: t % 60 === 0 }">{{ t % 60 === 0 ? formatTime(t) : '' }}</div>
+        <div class="time" :class="{ full: t % 60 === 0 }">
+          {{ t % 60 === 0 ? formatTime(t) : '' }}
+        </div>
         <button
           v-for="d in config.teachingDays"
           :key="d"
@@ -142,8 +176,8 @@ const markLabel: Record<GridMark, string> = {
       </template>
     </div>
     <p class="hint">
-      Tipp: Mit gedrückter Maustaste über mehrere Zeiten ziehen. „ganzer Tag“ füllt den Tag mit dem
-      gewählten Pinsel.
+      Tipp: Mit gedrückter Maustaste einen Bereich aufziehen, auch über mehrere Tage. „ganzer Tag“
+      füllt den Tag mit dem gewählten Pinsel. Zum Entfernen den Radierer wählen.
     </p>
   </div>
 </template>

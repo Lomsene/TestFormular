@@ -55,6 +55,16 @@ export type WishKind = ScheduleWish['kind']
 
 export type LastBlockAnswer = 'YES' | 'NO' | 'NO_WISH'
 
+/**
+ * „Wie im letzten Jahr“: Verweis auf den entsprechenden Theorieblock des Vorjahres.
+ * resolved = true  → die Vorjahresangaben lagen vor und sind in dieser Einreichung enthalten.
+ * resolved = false → lagen dem Formular nicht vor; die Hauptanwendung übernimmt sie selbst.
+ */
+export interface PreviousYearRef {
+  blockId: string
+  resolved: boolean
+}
+
 export interface FullTimeEntry {
   kind: 'FULL_TIME'
   /** Leeres Array = kein Terminwunsch (freie Einplanung). */
@@ -71,6 +81,11 @@ export interface FullTimeEntry {
     /** Wochentag der Präsidiumssitzungen – zählt nicht als Terminwunsch. */
     sessionWeekday: Weekday | null
   }
+  /** Gesetzt, wenn der jeweilige Teil „wie im letzten Jahr“ beantwortet wurde. */
+  sameAsPreviousYear: {
+    wishes: PreviousYearRef | null
+    presidium: PreviousYearRef | null
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +101,8 @@ export interface GridEntry {
   kind: 'FREELANCE' | 'PART_TIME'
   grid: WeekGrid
   note: string
+  /** Gesetzt, wenn die Zeiten „wie im letzten Jahr“ gelten sollen. */
+  sameAsPreviousYear: PreviousYearRef | null
 }
 
 export type AvailabilityEntry = FullTimeEntry | GridEntry
@@ -102,6 +119,8 @@ export interface TheoryBlock {
   end: string
   /** Bis wann Wünsche eingetragen werden können (ISO-Datum, inklusive). */
   submissionDeadline: string
+  /** Entsprechender Theorieblock im Vorjahr – Grundlage für „wie im letzten Jahr“. */
+  previousYearBlockId?: string
 }
 
 export interface LecturerData {
@@ -123,10 +142,7 @@ export type WindowStatus = 'PREFERRED' | 'AVAILABLE' | 'ONLINE_ONLY' | 'UNAVAILA
 export type Hardness = 'HARD' | 'SOFT'
 
 export type WindowSource =
-  | { type: 'WISH'; rank: number }
-  | { type: 'PRESIDIUM' }
-  | { type: 'GRID' }
-  | { type: 'DEFAULT' }
+  { type: 'WISH'; rank: number } | { type: 'PRESIDIUM' } | { type: 'GRID' } | { type: 'DEFAULT' }
 
 export interface TimeWindow {
   weekday: Weekday
@@ -149,6 +165,12 @@ export interface AvailabilityResult {
    * laut Merkblatt Anspruch auf bevorzugte Berücksichtigung im folgenden Theorieblock.
    */
   priorityClaim: boolean
+  /**
+   * true, wenn mindestens ein Teil „wie im letzten Jahr“ gewählt wurde, die Vorjahresangaben
+   * dem Formular aber nicht vorlagen. Die Zeitfenster enthalten diesen Teil dann noch nicht –
+   * die Hauptanwendung muss ihn aus der Vorjahreseinreichung übernehmen.
+   */
+  pendingPreviousYear: boolean
 }
 
 // ---------------------------------------------------------------------------

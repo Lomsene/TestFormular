@@ -14,7 +14,8 @@ const span = computed(() => props.config.dayEnd - props.config.dayStart)
 
 const hours = computed(() => {
   const list: number[] = []
-  for (let t = Math.ceil(props.config.dayStart / 60) * 60; t < props.config.dayEnd; t += 60) list.push(t)
+  for (let t = Math.floor(props.config.dayStart / 60) * 60 + 60; t < props.config.dayEnd; t += 60)
+    list.push(t)
   return list
 })
 
@@ -40,7 +41,13 @@ function sourceLabel(w: TimeWindow): string {
 
 function title(w: TimeWindow): string {
   const extra = sourceLabel(w)
-  return `${WEEKDAY_LABEL[w.weekday]} ${formatTime(w.start)}–${formatTime(w.end)}: ${STATUS_LABEL[w.status]}${extra ? ` (${extra})` : ''}`
+  return `${WEEKDAY_LABEL[w.weekday]} ${formatTime(w.start)}–${formatTime(w.end)}: ${statusLabel(w)}${extra ? ` (${extra})` : ''}`
+}
+
+function statusLabel(w: TimeWindow): string {
+  return w.status === 'UNAVAILABLE' && w.hardness === 'SOFT'
+    ? 'Möglichst nicht'
+    : STATUS_LABEL[w.status]
 }
 
 /** Sehr kurze Fenster nur mit Farbe, ohne Beschriftung. */
@@ -69,9 +76,9 @@ const isTiny = (w: TimeWindow) => w.end - w.start < 60
           :title="title(w)"
         >
           <template v-if="!isTiny(w)">
-            <strong>{{ STATUS_LABEL[w.status] }}</strong>
+            <strong>{{ statusLabel(w) }}</strong>
             <span v-if="!compact">{{ formatTime(w.start) }}–{{ formatTime(w.end) }}</span>
-            <em v-if="sourceLabel(w)">{{ sourceLabel(w) }}</em>
+            <em v-if="!compact && sourceLabel(w)">{{ sourceLabel(w) }}</em>
           </template>
         </div>
       </div>
@@ -145,8 +152,10 @@ const isTiny = (w: TimeWindow) => w.end - w.start < 60
   font-variant-numeric: tabular-nums;
 }
 
-.times span:first-child {
-  transform: none;
+.compact .win strong {
+  font-size: 0.68rem;
+  hyphens: auto;
+  overflow-wrap: anywhere;
 }
 
 .hourline {

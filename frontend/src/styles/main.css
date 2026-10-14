@@ -39,7 +39,13 @@
   --radius-sm: 6px;
   --shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 2px 8px rgb(0 0 0 / 5%);
 
-  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-family:
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
   font-size: 15px;
   line-height: 1.5;
   color: var(--text);
@@ -95,6 +101,10 @@ textarea {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 20px 24px;
+}
+
+.card {
+  scroll-margin-top: 90px;
 }
 
 .card + .card {
@@ -237,4 +247,24 @@ textarea {
 .notice-success {
   background: var(--st-available-bg);
   border-color: var(--st-preferred);
+}
+
+@media (max-width: 560px) {
+  .card {
+    padding: 16px;
+  }
+}
+
+.step-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.step-title:focus {
+  outline: none;
+}
+
+.lead {
+  margin: -8px 0 16px;
 }

@@ -69,7 +69,14 @@ function applyWish(days: DayCells, wish: ScheduleWish, rank: number, config: Pla
 
   switch (wish.kind) {
     case 'DAY':
-      paint(days, wish.weekday, dayStart, dayEnd, soft(wish.preference === 'PREFER' ? 'PREFERRED' : 'UNAVAILABLE'), config)
+      paint(
+        days,
+        wish.weekday,
+        dayStart,
+        dayEnd,
+        soft(wish.preference === 'PREFER' ? 'PREFERRED' : 'UNAVAILABLE'),
+        config,
+      )
       break
     case 'DAY_TIME':
       if (wish.blocked === 'BEFORE') {
@@ -125,6 +132,9 @@ function fromFullTime(entry: FullTimeEntry, config: PlanningConfig): Availabilit
       maxUnitsPerDay: maxUnits ? { units: maxUnits.units, hardness: 'SOFT' } : null,
     },
     priorityClaim: entry.wishConsideredLastBlock === 'NO',
+    pendingPreviousYear: [entry.sameAsPreviousYear.wishes, entry.sameAsPreviousYear.presidium].some(
+      (ref) => ref !== null && !ref.resolved,
+    ),
   }
 }
 
@@ -150,6 +160,7 @@ function fromGrid(entry: GridEntry, config: PlanningConfig): AvailabilityResult 
     windows: mergeCells(days, config),
     constraints: { maxUnitsPerDay: null },
     priorityClaim: false,
+    pendingPreviousYear: entry.sameAsPreviousYear !== null && !entry.sameAsPreviousYear.resolved,
   }
 }
 

@@ -13,6 +13,7 @@ function fullTime(wishes: ScheduleWish[], extra: Partial<FullTimeEntry> = {}): F
     exceptionAgreedWithPresidium: false,
     wishConsideredLastBlock: 'YES',
     presidium: { isMember: false, sessionWeekday: null },
+    sameAsPreviousYear: { wishes: null, presidium: null },
     ...extra,
   }
 }
@@ -29,14 +30,20 @@ describe('computeAvailability – hauptamtlich', () => {
   })
 
   it('„dienstags nie“ sperrt Dienstag weich', () => {
-    const r = computeAvailability(fullTime([{ kind: 'DAY', weekday: 'TU', preference: 'AVOID' }]), cfg)
+    const r = computeAvailability(
+      fullTime([{ kind: 'DAY', weekday: 'TU', preference: 'AVOID' }]),
+      cfg,
+    )
     const tu = r.windows.filter((w) => w.weekday === 'TU')
     expect(tu.map(strip)).toEqual([['TU', H(8), H(18), 'UNAVAILABLE', 'SOFT']])
     expect(tu[0]!.source).toEqual({ type: 'WISH', rank: 1 })
   })
 
   it('„gerne freitags“ markiert Freitag als bevorzugt', () => {
-    const r = computeAvailability(fullTime([{ kind: 'DAY', weekday: 'FR', preference: 'PREFER' }]), cfg)
+    const r = computeAvailability(
+      fullTime([{ kind: 'DAY', weekday: 'FR', preference: 'PREFER' }]),
+      cfg,
+    )
     expect(r.windows.find((w) => w.weekday === 'FR')!.status).toBe('PREFERRED')
   })
 
@@ -103,9 +110,29 @@ describe('computeAvailability – hauptamtlich', () => {
   })
 
   it('Anspruch auf bevorzugte Berücksichtigung, wenn letzter Wunsch nicht erfüllt', () => {
-    expect(computeAvailability(fullTime([], { wishConsideredLastBlock: 'NO' }), cfg).priorityClaim).toBe(true)
-    expect(computeAvailability(fullTime([], { wishConsideredLastBlock: 'YES' }), cfg).priorityClaim).toBe(false)
-    expect(computeAvailability(fullTime([], { wishConsideredLastBlock: 'NO_WISH' }), cfg).priorityClaim).toBe(false)
+    expect(
+      computeAvailability(fullTime([], { wishConsideredLastBlock: 'NO' }), cfg).priorityClaim,
+    ).toBe(true)
+    expect(
+      computeAvailability(fullTime([], { wishConsideredLastBlock: 'YES' }), cfg).priorityClaim,
+    ).toBe(false)
+    expect(
+      computeAvailability(fullTime([], { wishConsideredLastBlock: 'NO_WISH' }), cfg).priorityClaim,
+    ).toBe(false)
+  })
+
+  it('„wie im letzten Jahr“ ohne Vorjahresdaten wird als offen markiert', () => {
+    const ref = { blockId: '2026-01', resolved: false }
+    const pending = computeAvailability(
+      fullTime([], { sameAsPreviousYear: { wishes: ref, presidium: null } }),
+      cfg,
+    )
+    expect(pending.pendingPreviousYear).toBe(true)
+    const resolved = computeAvailability(
+      fullTime([], { sameAsPreviousYear: { wishes: { ...ref, resolved: true }, presidium: null } }),
+      cfg,
+    )
+    expect(resolved.pendingPreviousYear).toBe(false)
   })
 
   it('Fenster decken jeden Lehrtag lückenlos ab', () => {
@@ -129,7 +156,10 @@ describe('computeAvailability – Raster (Freiberufler/Teilzeit)', () => {
     for (let i = 2; i < 8; i++) grid.WE[i] = 'AVAILABLE'
     grid.WE[8] = 'ONLINE_ONLY'
     grid.WE[9] = 'ONLINE_ONLY'
-    const r = computeAvailability({ kind: 'FREELANCE', grid, note: '' }, cfg)
+    const r = computeAvailability(
+      { kind: 'FREELANCE', grid, note: '', sameAsPreviousYear: null },
+      cfg,
+    )
     expect(r.lecturerKind).toBe('FREELANCE')
     expect(r.windows.filter((w) => w.weekday === 'WE').map(strip)).toEqual([
       ['WE', H(8), H(9), 'UNAVAILABLE', 'HARD'],

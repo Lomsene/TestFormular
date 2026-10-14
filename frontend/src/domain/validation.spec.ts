@@ -13,6 +13,7 @@ function fullTime(wishes: ScheduleWish[], extra: Partial<FullTimeEntry> = {}): F
     exceptionAgreedWithPresidium: false,
     wishConsideredLastBlock: 'YES',
     presidium: { isMember: false, sessionWeekday: null },
+    sameAsPreviousYear: { wishes: null, presidium: null },
     ...extra,
   }
 }
@@ -104,16 +105,36 @@ describe('Merkblatt-Regeln (hauptamtlich)', () => {
 
 describe('Raster', () => {
   it('komplett leeres Raster ist ein Fehler', () => {
-    expect(hasErrors(validateEntry({ kind: 'FREELANCE', grid: emptyGrid(cfg), note: '' }, cfg))).toBe(true)
+    expect(
+      hasErrors(
+        validateEntry(
+          { kind: 'FREELANCE', grid: emptyGrid(cfg), note: '', sameAsPreviousYear: null },
+          cfg,
+        ),
+      ),
+    ).toBe(true)
+  })
+
+  it('leeres Raster ist zulässig bei „wie im letzten Jahr“ ohne Vorjahresdaten', () => {
+    const sameAsPreviousYear = { blockId: '2026-01', resolved: false }
+    expect(
+      hasErrors(
+        validateEntry(
+          { kind: 'FREELANCE', grid: emptyGrid(cfg), note: '', sameAsPreviousYear },
+          cfg,
+        ),
+      ),
+    ).toBe(false)
   })
 })
 
 describe('Personendaten', () => {
   it('prüft Pflichtfelder und E-Mail', () => {
-    expect(validateLecturer({ lastName: '', firstName: 'A', email: 'x' }).map((i) => i.field)).toEqual([
-      'lastName',
-      'email',
-    ])
-    expect(validateLecturer({ lastName: 'Müller', firstName: 'Max', email: 'max@dhsh.de' })).toEqual([])
+    expect(
+      validateLecturer({ lastName: '', firstName: 'A', email: 'x' }).map((i) => i.field),
+    ).toEqual(['lastName', 'email'])
+    expect(
+      validateLecturer({ lastName: 'Müller', firstName: 'Max', email: 'max@dhsh.de' }),
+    ).toEqual([])
   })
 })

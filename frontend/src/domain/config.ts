@@ -35,6 +35,7 @@ export const THEORY_BLOCKS: TheoryBlock[] = [
     start: '2027-01-04',
     end: '2027-03-26',
     submissionDeadline: '2026-11-20',
+    previousYearBlockId: '2026-01',
   },
   {
     id: '2026-10',
@@ -42,5 +43,23 @@ export const THEORY_BLOCKS: TheoryBlock[] = [
     start: '2026-10-05',
     end: '2026-12-18',
     submissionDeadline: '2026-09-18',
+    previousYearBlockId: '2025-10',
+  },
+  {
+    id: '2026-01',
+    label: 'Theorieblock Januar bis März 2026',
+    start: '2026-01-05',
+    end: '2026-03-27',
+    submissionDeadline: '2025-11-21',
+    previousYearBlockId: '2025-01',
   },
 ]
+
+/** Bezeichnung eines Blocks – auch für Vorjahresblöcke, die nicht mehr in der Liste stehen. */
+export function blockLabel(id: string): string {
+  const known = THEORY_BLOCKS.find((b) => b.id === id)
+  if (known) return known.label
+  const [year, month] = id.split('-')
+  const season = { '01': 'Januar bis März', '10': 'Oktober bis Dezember' }[month ?? '']
+  return season ? `Theorieblock ${season} ${year}` : `Theorieblock ${id}`
+}

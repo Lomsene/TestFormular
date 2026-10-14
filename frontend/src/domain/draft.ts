@@ -6,7 +6,8 @@ import type { ScheduleWish, Weekday, WishKind } from './types'
  * die Wunschart gewechselt wird – so gehen Eingaben beim Ausprobieren nicht verloren.
  */
 export interface WishDraft {
-  kind: WishKind | 'NONE' | null
+  /** NONE = kein Wunsch, SAME_AS_LAST_YEAR = wie im letzten Jahr (nur beim ersten Wunsch). */
+  kind: WishKind | 'NONE' | 'SAME_AS_LAST_YEAR' | null
   weekday: Weekday | null
   preference: 'PREFER' | 'AVOID'
   blocked: 'BEFORE' | 'AFTER'
@@ -50,6 +51,8 @@ export function wishToDraft(wish: ScheduleWish, config: PlanningConfig): WishDra
 /** Was fehlt noch, damit aus dem Entwurf ein Wunsch wird? (null = vollständig) */
 export function draftMissing(d: WishDraft): string | null {
   if (d.kind === null) return 'Bitte wählen Sie aus, welche Art von Wunsch Sie haben.'
-  if (d.kind === 'NONE' || d.kind === 'MAX_UNITS_PER_DAY') return null
+  if (d.kind === 'NONE' || d.kind === 'SAME_AS_LAST_YEAR' || d.kind === 'MAX_UNITS_PER_DAY') {
+    return null
+  }
   return d.weekday ? null : 'Bitte wählen Sie einen Wochentag.'
 }

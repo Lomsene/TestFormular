@@ -2,7 +2,13 @@
 import { computed } from 'vue'
 import type { PlanningConfig } from '../domain/config'
 import { draftToWish, type WishDraft } from '../domain/draft'
-import { WEEKDAY_LABEL, WEEKDAY_SHORT, describeWish, formatClock, formatTime } from '../domain/format'
+import {
+  WEEKDAY_LABEL,
+  WEEKDAY_SHORT,
+  describeWish,
+  formatClock,
+  formatTime,
+} from '../domain/format'
 import type { Weekday } from '../domain/types'
 import { maxUnitsUpperBound, type Issue } from '../domain/validation'
 import ChoiceGroup, { type Choice } from './ChoiceGroup.vue'
@@ -13,8 +19,10 @@ const props = defineProps<{
   index: number
   config: PlanningConfig
   issuesFor: (field: string) => Issue[]
-  /** Nur beim ersten Wunsch darf „kein Wunsch“ gewählt werden. */
+  /** Nur beim ersten Wunsch: „kein Wunsch“ und „wie im letzten Jahr“. */
   allowNone: boolean
+  /** Bezeichnung des Vorjahresblocks; null = es gibt keinen. */
+  previousLabel: string | null
 }>()
 
 const draft = computed(() => props.draft)
@@ -24,6 +32,14 @@ const issues = (name: string) => props.issuesFor(`wish.${props.index}.${name}`)
 const kindOptions = computed<Choice<NonNullable<WishDraft['kind']>>[]>(() => [
   ...(props.allowNone
     ? [
+        {
+          value: 'SAME_AS_LAST_YEAR' as const,
+          label: 'Wie im letzten Jahr',
+          description: props.previousLabel
+            ? `Gleicher Wunsch wie im ${props.previousLabel}.`
+            : 'Für diesen Block nicht möglich.',
+          disabled: !props.previousLabel,
+        },
         {
           value: 'NONE' as const,
           label: 'Kein Wunsch',
@@ -95,7 +111,10 @@ const splitPercent = computed(() => {
     />
     <FieldMessages :issues="issues('kind')" />
 
-    <div v-if="draft.kind && draft.kind !== 'NONE'" class="details">
+    <div
+      v-if="draft.kind && draft.kind !== 'NONE' && draft.kind !== 'SAME_AS_LAST_YEAR'"
+      class="details"
+    >
       <!-- Ganzer Tag: gern oder nicht -->
       <ChoiceGroup
         v-if="draft.kind === 'DAY'"
@@ -125,10 +144,18 @@ const splitPercent = computed(() => {
         <ChoiceGroup
           v-model="draft.blocked"
           :name="id('blocked')"
-          legend="Welcher Teil des Tages soll frei bleiben?"
+          legend="Was möchten Sie an diesem Tag?"
           :options="[
-            { value: 'BEFORE', label: 'Der Vormittag', description: 'Ich lehre erst ab einer Uhrzeit.' },
-            { value: 'AFTER', label: 'Der Nachmittag', description: 'Ab einer Uhrzeit lehre ich nicht.' },
+            {
+              value: 'BEFORE',
+              label: 'Erst ab einer bestimmten Uhrzeit lehren',
+              description: 'z. B. „montags erst ab 10 Uhr“',
+            },
+            {
+              value: 'AFTER',
+              label: 'Ab einer bestimmten Uhrzeit nicht mehr lehren',
+              description: 'z. B. „freitags ab 13 Uhr keine Lehre mehr“',
+            },
           ]"
           variant="cards"
         />
@@ -156,8 +183,11 @@ const splitPercent = computed(() => {
         </div>
         <p class="hint">
           {{ draft.weekday ? WEEKDAY_LABEL[draft.weekday] : 'Am gewählten Tag' }}:
-          <span class="dot on" /> verfügbar · <span class="dot off" /> möglichst keine Lehre
-          ({{ draft.blocked === 'BEFORE' ? `bis ${formatClock(draft.time)}` : `ab ${formatClock(draft.time)}` }})
+          <span class="dot on" /> verfügbar · <span class="dot off" /> möglichst keine Lehre ({{
+            draft.blocked === 'BEFORE'
+              ? `bis ${formatClock(draft.time)}`
+              : `ab ${formatClock(draft.time)}`
+          }})
         </p>
       </template>
 

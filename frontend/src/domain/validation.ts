@@ -1,6 +1,12 @@
 import type { PlanningConfig } from './config'
 import { WEEKDAY_ADVERB, capitalize, formatClock } from './format'
-import type { AvailabilityEntry, FullTimeEntry, GridEntry, LecturerData, ScheduleWish } from './types'
+import type {
+  AvailabilityEntry,
+  FullTimeEntry,
+  GridEntry,
+  LecturerData,
+  ScheduleWish,
+} from './types'
 
 /**
  * Prüfregeln aus dem Merkblatt „Terminwünsche Stundenplanung“.
@@ -25,13 +31,25 @@ export function maxUnitsUpperBound(config: PlanningConfig): number {
 export function validateLecturer(lecturer: LecturerData): Issue[] {
   const issues: Issue[] = []
   if (!lecturer.lastName.trim()) {
-    issues.push({ severity: 'error', field: 'lastName', message: 'Bitte geben Sie Ihren Nachnamen an.' })
+    issues.push({
+      severity: 'error',
+      field: 'lastName',
+      message: 'Bitte geben Sie Ihren Nachnamen an.',
+    })
   }
   if (!lecturer.firstName.trim()) {
-    issues.push({ severity: 'error', field: 'firstName', message: 'Bitte geben Sie Ihren Vornamen an.' })
+    issues.push({
+      severity: 'error',
+      field: 'firstName',
+      message: 'Bitte geben Sie Ihren Vornamen an.',
+    })
   }
   if (!lecturer.email.trim()) {
-    issues.push({ severity: 'error', field: 'email', message: 'Bitte geben Sie Ihre E-Mail-Adresse an.' })
+    issues.push({
+      severity: 'error',
+      field: 'email',
+      message: 'Bitte geben Sie Ihre E-Mail-Adresse an.',
+    })
   } else if (!EMAIL_PATTERN.test(lecturer.email.trim())) {
     issues.push({
       severity: 'error',
@@ -72,7 +90,11 @@ function validateWish(wish: ScheduleWish, index: number, config: PlanningConfig)
   if (wish.kind === 'MAX_UNITS_PER_DAY') {
     const upper = maxUnitsUpperBound(config)
     if (!Number.isInteger(wish.units)) {
-      issues.push({ severity: 'error', field: at('units'), message: 'Bitte eine ganze Zahl angeben.' })
+      issues.push({
+        severity: 'error',
+        field: at('units'),
+        message: 'Bitte eine ganze Zahl angeben.',
+      })
     } else if (wish.units < config.minMaxUnitsPerDay) {
       issues.push({
         severity: 'error',
@@ -178,6 +200,8 @@ function validateFullTime(entry: FullTimeEntry, config: PlanningConfig): Issue[]
 }
 
 function validateGrid(entry: GridEntry): Issue[] {
+  // „Wie im letzten Jahr“ ohne vorliegende Daten: Raster bleibt leer, die Hauptanwendung ergänzt.
+  if (entry.sameAsPreviousYear && !entry.sameAsPreviousYear.resolved) return []
   const anyAvailable = Object.values(entry.grid).some((day) =>
     day.some((mark) => mark !== 'UNAVAILABLE'),
   )

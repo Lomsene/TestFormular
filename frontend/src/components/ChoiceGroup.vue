@@ -35,7 +35,10 @@ const model = defineModel<T | null>({ required: true })
         v-for="opt in options"
         :key="String(opt.value)"
         class="option"
-        :class="[{ checked: model === opt.value, disabled: opt.disabled }, opt.tone && `tone-${opt.tone}`]"
+        :class="[
+          { checked: model === opt.value, disabled: opt.disabled },
+          opt.tone && `tone-${opt.tone}`,
+        ]"
       >
         <input
           type="radio"
