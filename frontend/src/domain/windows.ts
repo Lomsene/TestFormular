@@ -1,6 +1,8 @@
 import type { PlanningConfig } from './config'
+import { weekdayOf } from './calendar'
 import type {
   AvailabilityEntry,
+  DateWindow,
   AvailabilityResult,
   FullTimeEntry,
   GridEntry,
@@ -85,6 +87,10 @@ function applyWish(days: DayCells, wish: ScheduleWish, rank: number, config: Pla
         paint(days, wish.weekday, wish.time, dayEnd, soft('UNAVAILABLE'), config)
       }
       break
+    case 'DAY_RANGE':
+      paint(days, wish.weekday, dayStart, wish.start, soft('UNAVAILABLE'), config)
+      paint(days, wish.weekday, wish.end, dayEnd, soft('UNAVAILABLE'), config)
+      break
     case 'ONLINE_ONLY':
       paint(days, wish.weekday, dayStart, dayEnd, soft('ONLINE_ONLY'), config)
       break
@@ -128,6 +134,7 @@ function fromFullTime(entry: FullTimeEntry, config: PlanningConfig): Availabilit
   return {
     lecturerKind: 'FULL_TIME',
     windows: mergeCells(days, config),
+    exceptions: [],
     constraints: {
       maxUnitsPerDay: maxUnits ? { units: maxUnits.units, hardness: 'SOFT' } : null,
     },
@@ -139,6 +146,7 @@ function fromFullTime(entry: FullTimeEntry, config: PlanningConfig): Availabilit
 }
 
 const GRID_STATUS: Record<GridMark, WindowStatus> = {
+  PREFERRED: 'PREFERRED',
   AVAILABLE: 'AVAILABLE',
   ONLINE_ONLY: 'ONLINE_ONLY',
   UNAVAILABLE: 'UNAVAILABLE',
@@ -158,6 +166,20 @@ function fromGrid(entry: GridEntry, config: PlanningConfig): AvailabilityResult 
   return {
     lecturerKind: entry.kind,
     windows: mergeCells(days, config),
+    exceptions: entry.exceptions.flatMap((e): DateWindow[] => {
+      const weekday = weekdayOf(e.date)
+      if (!weekday) return []
+      return [
+        {
+          date: e.date,
+          weekday,
+          start: e.time?.start ?? config.dayStart,
+          end: e.time?.end ?? config.dayEnd,
+          status: e.mark,
+          hardness: 'HARD',
+        },
+      ]
+    }),
     constraints: { maxUnitsPerDay: null },
     priorityClaim: false,
     pendingPreviousYear: entry.sameAsPreviousYear !== null && !entry.sameAsPreviousYear.resolved,

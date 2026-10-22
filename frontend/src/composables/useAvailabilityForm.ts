@@ -7,10 +7,12 @@ import {
   wishToDraft,
   type WishDraft,
 } from '../domain/draft'
+import { isInBlock } from '../domain/calendar'
 import { buildExport } from '../domain/export'
 import type {
   AvailabilityEntry,
   AvailabilityExport,
+  DateException,
   FullTimeEntry,
   GridEntry,
   LastBlockAnswer,
@@ -26,7 +28,7 @@ import { hasErrors, validateEntry, validateLecturer, type Issue } from '../domai
 import { computeAvailability, emptyGrid } from '../domain/windows'
 import { findSubmission } from '../services/history'
 
-const STORAGE_KEY = 'dhsh-verfuegbarkeit-entwurf-v3'
+const STORAGE_KEY = 'dhsh-verfuegbarkeit-entwurf-v4'
 
 export type PresidiumAnswer = 'NO' | 'YES' | 'SAME_AS_LAST_YEAR'
 export type GridMode = 'OWN' | 'SAME_AS_LAST_YEAR'
@@ -34,6 +36,8 @@ export type GridMode = 'OWN' | 'SAME_AS_LAST_YEAR'
 interface GridState {
   mode: GridMode
   grid: WeekGrid
+  /** Optionale Abweichungen an einzelnen Tagen des Blocks. */
+  exceptions: DateException[]
   note: string
 }
 
@@ -56,7 +60,8 @@ export interface FormState {
 // Schritte
 // ---------------------------------------------------------------------------
 
-export type StepId = 'person' | 'wish' | 'lastBlock' | 'presidium' | 'grid' | 'pending' | 'review'
+export type StepId =
+  'person' | 'wish' | 'wishDay' | 'wishWhat' | 'details' | 'grid' | 'pending' | 'review'
 
 export interface StepDef {
   id: StepId
@@ -67,8 +72,9 @@ export const STEPS: Record<LecturerKind, StepDef[]> = {
   FULL_TIME: [
     { id: 'person', label: 'Ihre Angaben' },
     { id: 'wish', label: 'Terminwunsch' },
-    { id: 'lastBlock', label: 'Letzter Block' },
-    { id: 'presidium', label: 'Präsidium' },
+    { id: 'wishDay', label: 'Tag' },
+    { id: 'wishWhat', label: 'Was genau?' },
+    { id: 'details', label: 'Weitere Angaben' },
     { id: 'review', label: 'Prüfen & absenden' },
   ],
   FREELANCE: [
@@ -90,12 +96,24 @@ export const STEPS_UNDECIDED: StepDef[] = [
   { id: 'review', label: 'Prüfen & absenden' },
 ]
 
-/** Zu welchem Schritt gehört eine Meldung? */
+/** Schritte, die es nur gibt, wenn man „Ja, ich habe einen Wunsch“ gewählt hat. */
+const WISH_DETAIL_STEPS: StepId[] = ['wishDay', 'wishWhat']
+
+/**
+ * Zu welchem Schritt gehört eine Meldung? Der Terminwunsch ist auf drei Schritte verteilt:
+ * Wunsch ja/nein → Tag → was genau. Weitere Wünsche (Ausnahmefall) stehen im letzten davon.
+ */
 export function stepOfField(field: string): StepId {
   if (['kind', 'lastName', 'firstName', 'email'].includes(field)) return 'person'
-  if (field.startsWith('wish.') || field === 'exception') return 'wish'
-  if (field === 'lastBlock') return 'lastBlock'
-  if (field.startsWith('presidium')) return 'presidium'
+  if (field === 'exception') return 'wishWhat'
+  const wish = /^wish\.(\d+)\.(\w+)$/.exec(field)
+  if (wish) {
+    const [, index, name] = wish
+    if (index !== '0') return 'wishWhat'
+    if (name === 'answer') return 'wish'
+    return name === 'day' || name === 'weekday' ? 'wishDay' : 'wishWhat'
+  }
+  if (field === 'lastBlock' || field.startsWith('presidium')) return 'details'
   return 'grid'
 }
 
@@ -122,8 +140,8 @@ function initialState(config: PlanningConfig): FormState {
       wishConsideredLastBlock: null,
       presidium: { answer: 'NO', sessionWeekday: null },
     },
-    freelance: { mode: 'OWN', grid: emptyGrid(config), note: '' },
-    partTime: { mode: 'OWN', grid: emptyGrid(config), note: '' },
+    freelance: { mode: 'OWN', grid: emptyGrid(config), exceptions: [], note: '' },
+    partTime: { mode: 'OWN', grid: emptyGrid(config), exceptions: [], note: '' },
   }
 }
 
@@ -136,7 +154,14 @@ function loadDraft(fallback: FormState): FormState {
       ...fallback,
       ...saved,
       lecturer: { ...fallback.lecturer, ...saved.lecturer },
-      fullTime: { ...fallback.fullTime, ...saved.fullTime },
+      fullTime: {
+        ...fallback.fullTime,
+        ...saved.fullTime,
+        drafts: (saved.fullTime?.drafts ?? fallback.fullTime.drafts).map((d) => ({
+          ...fallback.fullTime.drafts[0]!,
+          ...d,
+        })),
+      },
       freelance: { ...fallback.freelance, ...saved.freelance },
       partTime: { ...fallback.partTime, ...saved.partTime },
     }
@@ -194,7 +219,7 @@ export function useAvailabilityForm(config: PlanningConfig = DEFAULT_CONFIG) {
   // ----- Antworten → fachlicher Eintrag ------------------------------------
 
   const wishesSameAsLastYear = computed(
-    () => state.fullTime.drafts[0]?.kind === 'SAME_AS_LAST_YEAR',
+    () => state.fullTime.drafts[0]?.answer === 'SAME_AS_LAST_YEAR',
   )
 
   /** Vollständige Wünsche samt Position des zugehörigen Entwurfs. */
@@ -238,16 +263,21 @@ export function useAvailabilityForm(config: PlanningConfig = DEFAULT_CONFIG) {
 
   function gridEntry(kind: GridEntry['kind']): GridEntry {
     const s = kind === 'FREELANCE' ? state.freelance : state.partTime
+    // Abweichungen gehören immer zum aktuellen Block – auch bei „wie im letzten Jahr“.
+    const exceptions = s.exceptions
+      .filter((e) => isInBlock(e.date, block.value))
+      .sort((a, b) => a.date.localeCompare(b.date))
     if (s.mode === 'SAME_AS_LAST_YEAR') {
       const prev = previousGrid(kind)
       return {
         kind,
         grid: prev?.grid ?? emptyGrid(config),
+        exceptions,
         note: s.note.trim() || prev?.note || '',
         sameAsPreviousYear: previousRef(prev !== null),
       }
     }
-    return { kind, grid: s.grid, note: s.note.trim(), sameAsPreviousYear: null }
+    return { kind, grid: s.grid, exceptions, note: s.note.trim(), sameAsPreviousYear: null }
   }
 
   const entry = computed<AvailabilityEntry>(() =>
@@ -276,8 +306,8 @@ export function useAvailabilityForm(config: PlanningConfig = DEFAULT_CONFIG) {
           if (missing) {
             list.push({
               severity: 'error',
-              field: d.kind === null ? `wish.${i}.kind` : `wish.${i}.weekday`,
-              message: missing,
+              field: `wish.${i}.${missing.field}`,
+              message: missing.message,
             })
           }
         })
@@ -300,16 +330,30 @@ export function useAvailabilityForm(config: PlanningConfig = DEFAULT_CONFIG) {
 
   // ----- Schritte -------------------------------------------------------------
 
-  const steps = computed(() => (state.kind ? STEPS[state.kind] : STEPS_UNDECIDED))
+  const steps = computed(() => {
+    if (!state.kind) return STEPS_UNDECIDED
+    const list = STEPS[state.kind]
+    // Tag und „was genau“ nur, wenn es einen eigenen Wunsch gibt.
+    return state.fullTime.drafts[0]?.answer === 'WISH' || state.kind !== 'FULL_TIME'
+      ? list
+      : list.filter((s) => !WISH_DETAIL_STEPS.includes(s.id))
+  })
+
+  /** Wie stepOfField – fällt aber auf „Terminwunsch“ zurück, wenn der Schritt gerade fehlt
+   *  (z. B. Meldungen zu Vorjahreswünschen bei „wie im letzten Jahr“). */
+  function stepOf(field: string): StepId {
+    const id = stepOfField(field)
+    return WISH_DETAIL_STEPS.includes(id) && !steps.value.some((s) => s.id === id) ? 'wish' : id
+  }
   const step = computed(() => steps.value[Math.min(stepIndex.value, steps.value.length - 1)]!)
 
   function stepErrors(id: StepId): Issue[] {
-    return issues.value.filter((i) => i.severity === 'error' && stepOfField(i.field) === id)
+    return issues.value.filter((i) => i.severity === 'error' && stepOf(i.field) === id)
   }
 
   function issuesFor(field: string): Issue[] {
     return issues.value.filter(
-      (i) => i.field === field && (i.severity === 'warning' || revealed.has(stepOfField(i.field))),
+      (i) => i.field === field && (i.severity === 'warning' || revealed.has(stepOf(i.field))),
     )
   }
 
@@ -346,7 +390,7 @@ export function useAvailabilityForm(config: PlanningConfig = DEFAULT_CONFIG) {
   // ----- Wünsche bearbeiten -------------------------------------------------
 
   function addExtraWish() {
-    state.fullTime.drafts.push(newWishDraft(config))
+    state.fullTime.drafts.push(newWishDraft(config, 'WISH'))
   }
 
   function removeWish(index: number) {

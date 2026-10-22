@@ -3,14 +3,23 @@ import { computed } from 'vue'
 import type { AvailabilityForm, GridMode } from '../../composables/useAvailabilityForm'
 import { blockLabel } from '../../domain/config'
 import ChoiceGroup, { type Choice } from '../ChoiceGroup.vue'
+import ExceptionCalendar from '../ExceptionCalendar.vue'
 import FieldMessages from '../FieldMessages.vue'
 import PreviousYearPanel from '../PreviousYearPanel.vue'
 import WeekGridEditor from '../WeekGridEditor.vue'
 import WeekPreview from '../WeekPreview.vue'
 
 const props = defineProps<{ form: AvailabilityForm; kind: 'FREELANCE' | 'PART_TIME' }>()
-const { state, config, issuesFor, previousBlockId, previousGrid, adoptPreviousGrid, result } =
-  props.form
+const {
+  state,
+  config,
+  block,
+  issuesFor,
+  previousBlockId,
+  previousGrid,
+  adoptPreviousGrid,
+  result,
+} = props.form
 
 const data = computed(() => (props.kind === 'FREELANCE' ? state.freelance : state.partTime))
 const previous = computed(() => previousGrid(props.kind))
@@ -53,8 +62,8 @@ const modeOptions = computed<Choice<GridMode>[]>(() => [
 
     <template v-if="data.mode === 'OWN'">
       <p class="hint grid-hint">
-        Markieren Sie die Zeiten, in denen Sie lehren können. Alles Unmarkierte gilt als
-        <em>nicht verfügbar</em>.
+        Markieren Sie die Zeiten, in denen Sie in einer normalen Woche lehren können. Alles
+        Unmarkierte gilt als <em>nicht verfügbar</em>.
       </p>
       <WeekGridEditor :grid="data.grid" :config="config" />
       <FieldMessages :issues="issuesFor('grid')" />
@@ -70,6 +79,13 @@ const modeOptions = computed<Choice<GridMode>[]>(() => [
       <WeekPreview :result="result" :config="config" compact />
     </PreviousYearPanel>
 
+    <ExceptionCalendar
+      :exceptions="data.exceptions"
+      :block="block"
+      :config="config"
+      :issues-for="issuesFor"
+    />
+
     <div class="field note">
       <label :for="'note-' + kind">Anmerkungen (optional)</label>
       <textarea
@@ -78,7 +94,7 @@ const modeOptions = computed<Choice<GridMode>[]>(() => [
         class="textarea"
         rows="3"
         maxlength="1000"
-        placeholder="z. B. „In den Kalenderwochen 10 bis 12 nicht verfügbar“"
+        placeholder="z. B. „Online-Termine bitte nur nachmittags“"
       />
     </div>
   </section>

@@ -1,76 +1,105 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { PlanningConfig } from '../domain/config'
-import { draftToWish, type WishDraft } from '../domain/draft'
-import {
-  WEEKDAY_LABEL,
-  WEEKDAY_SHORT,
-  describeWish,
-  formatClock,
-  formatTime,
-} from '../domain/format'
+import { EVERY_DAY, draftToWish, type WishDraft, type WishWhat } from '../domain/draft'
+import { WEEKDAY_LABEL, WEEKDAY_SHORT, describeWish, formatTime } from '../domain/format'
 import type { Weekday } from '../domain/types'
 import { maxUnitsUpperBound, type Issue } from '../domain/validation'
 import ChoiceGroup, { type Choice } from './ChoiceGroup.vue'
 import FieldMessages from './FieldMessages.vue'
+
+/**
+ * Ein Terminwunsch als Satzbaukasten: „Ich möchte [Tag] [was].“
+ *
+ * Für den ersten Wunsch steht jede Frage auf einem eigenen Schritt (`part`), groß und mit
+ * Erklärung. Weitere Wünsche (Ausnahmefall) zeigen Tag und „was“ kompakt untereinander.
+ */
+export type WishPart = 'answer' | 'day' | 'what' | 'compact'
 
 const props = defineProps<{
   draft: WishDraft
   index: number
   config: PlanningConfig
   issuesFor: (field: string) => Issue[]
-  /** Nur beim ersten Wunsch: „kein Wunsch“ und „wie im letzten Jahr“. */
-  allowNone: boolean
+  part: WishPart
   /** Bezeichnung des Vorjahresblocks; null = es gibt keinen. */
-  previousLabel: string | null
+  previousLabel?: string | null
 }>()
 
 const draft = computed(() => props.draft)
 const id = (name: string) => `wish-${props.index}-${name}`
 const issues = (name: string) => props.issuesFor(`wish.${props.index}.${name}`)
+const hasError = (...names: string[]) =>
+  names.some((n) => issues(n).some((i) => i.severity === 'error'))
 
-const kindOptions = computed<Choice<NonNullable<WishDraft['kind']>>[]>(() => [
-  ...(props.allowNone
-    ? [
-        {
-          value: 'SAME_AS_LAST_YEAR' as const,
-          label: 'Wie im letzten Jahr',
-          description: props.previousLabel
-            ? `Gleicher Wunsch wie im ${props.previousLabel}.`
-            : 'Für diesen Block nicht möglich.',
-          disabled: !props.previousLabel,
-        },
-        {
-          value: 'NONE' as const,
-          label: 'Kein Wunsch',
-          description: 'Ich kann an allen Tagen frei eingeplant werden.',
-        },
-      ]
-    : []),
+/** Eigener Schritt: Frage steht schon als Überschrift, Knöpfe als große Karten. */
+const standalone = computed(() => props.part !== 'compact')
+const shows = (p: 'day' | 'what') => props.part === p || props.part === 'compact'
+
+const answerOptions = computed<Choice<NonNullable<WishDraft['answer']>>[]>(() => [
   {
-    value: 'DAY',
-    label: 'Ein ganzer Wochentag',
-    description: 'z. B. „montags keine Lehre“ oder „gern freitags“',
-  },
-  {
-    value: 'DAY_TIME',
-    label: 'Ein Wochentag ab/bis Uhrzeit',
+    value: 'WISH',
+    label: 'Ja, ich habe einen Wunsch',
     description: 'z. B. „freitags ab 13 Uhr keine Lehre“',
   },
   {
-    value: 'ONLINE_ONLY',
-    label: 'Ein Wochentag nur online',
-    description: 'z. B. „montags nur Online-Lehre“',
+    value: 'NONE',
+    label: 'Nein, kein Wunsch',
+    description: 'Ich kann an allen Tagen eingeplant werden.',
   },
   {
-    value: 'MAX_UNITS_PER_DAY',
-    label: 'Höchstens … Stunden pro Tag',
-    description: `z. B. „maximal ${props.config.minMaxUnitsPerDay} Unterrichtsstunden täglich“`,
+    value: 'SAME_AS_LAST_YEAR',
+    label: 'Wie im letzten Jahr',
+    description: props.previousLabel
+      ? `Gleicher Wunsch wie im ${props.previousLabel}.`
+      : 'Für diesen Block nicht möglich.',
+    disabled: !props.previousLabel,
   },
 ])
 
-const weekdayOptions = computed<Choice<Weekday>[]>(() =>
-  props.config.teachingDays.map((d) => ({ value: d, label: WEEKDAY_SHORT[d] })),
+const dayOptions = computed<Choice<Weekday | typeof EVERY_DAY>[]>(() => [
+  ...props.config.teachingDays.map((d) => ({
+    value: d,
+    label: standalone.value ? WEEKDAY_LABEL[d] : WEEKDAY_SHORT[d],
+  })),
+  standalone.value
+    ? {
+        value: EVERY_DAY,
+        label: 'Jeden Tag',
+        description: 'nur für eine Höchstzahl an Stunden pro Tag',
+      }
+    : { value: EVERY_DAY, label: 'Jeden Tag' },
+])
+
+const WHAT_OPTIONS: Choice<WishWhat>[] = [
+  {
+    value: 'AVOID',
+    label: 'Keine Lehre',
+    description: 'an diesem Tag gar nicht',
+    tone: 'negative',
+  },
+  {
+    value: 'PREFER',
+    label: 'Gern Lehre',
+    description: 'an diesem Tag besonders gern',
+    tone: 'positive',
+  },
+  { value: 'FROM', label: 'Erst ab … Uhr', description: 'z. B. erst ab 10 Uhr' },
+  { value: 'UNTIL', label: 'Nur bis … Uhr', description: 'z. B. nur bis 13 Uhr' },
+  { value: 'RANGE', label: 'Nur von … bis … Uhr', description: 'z. B. nur von 10 bis 14 Uhr' },
+  { value: 'ONLINE', label: 'Nur online', description: 'nur Online-Lehrveranstaltungen' },
+]
+
+/** Kompakt: kurze Knöpfe ohne Erklärung. */
+const whatOptions = computed(() =>
+  standalone.value
+    ? WHAT_OPTIONS
+    : WHAT_OPTIONS.map(({ description: _, ...o }) => ({ ...o, label: o.label.toLowerCase() })),
+)
+
+const needsTime = computed(
+  () =>
+    draft.value.day !== EVERY_DAY && (draft.value.what === 'FROM' || draft.value.what === 'UNTIL'),
 )
 
 const timeOptions = computed(() => {
@@ -80,6 +109,10 @@ const timeOptions = computed(() => {
   return list
 })
 
+/** Für „von … bis“: Beginn ab Tagesbeginn, Ende bis Tagesende. */
+const rangeStartOptions = computed(() => [props.config.dayStart, ...timeOptions.value])
+const rangeEndOptions = computed(() => [...timeOptions.value, props.config.dayEnd])
+
 const upper = computed(() => maxUnitsUpperBound(props.config))
 
 function setUnits(value: number) {
@@ -88,113 +121,89 @@ function setUnits(value: number) {
 }
 
 const preview = computed(() => {
+  if (!shows('what')) return null
   const wish = draftToWish(draft.value)
   return wish ? describeWish(wish) : null
-})
-
-/** Anteil des Tages vor der gewählten Uhrzeit – für die kleine Tagesgrafik. */
-const splitPercent = computed(() => {
-  const { dayStart, dayEnd } = props.config
-  return ((draft.value.time - dayStart) / (dayEnd - dayStart)) * 100
 })
 </script>
 
 <template>
-  <div class="wish">
-    <ChoiceGroup
-      v-model="draft.kind"
-      :name="id('kind')"
-      :legend="index === 0 ? 'Welche Art von Wunsch haben Sie?' : 'Welche Art von weiterem Wunsch?'"
-      variant="cards"
-      :options="kindOptions"
-      :invalid="issues('kind').some((i) => i.severity === 'error')"
-    />
-    <FieldMessages :issues="issues('kind')" />
-
-    <div
-      v-if="draft.kind && draft.kind !== 'NONE' && draft.kind !== 'SAME_AS_LAST_YEAR'"
-      class="details"
-    >
-      <!-- Ganzer Tag: gern oder nicht -->
+  <div class="wish" :class="{ compact: !standalone }">
+    <!-- Haben Sie einen Wunsch? -->
+    <template v-if="part === 'answer'">
       <ChoiceGroup
-        v-if="draft.kind === 'DAY'"
-        v-model="draft.preference"
-        :name="id('preference')"
-        legend="Was wünschen Sie sich für diesen Tag?"
-        :options="[
-          { value: 'AVOID', label: 'Keine Lehre an diesem Tag', tone: 'negative' },
-          { value: 'PREFER', label: 'Gern Lehre an diesem Tag', tone: 'positive' },
-        ]"
+        v-model="draft.answer"
+        :name="id('answer')"
+        legend="Haben Sie einen Terminwunsch?"
+        hide-legend
+        variant="cards"
+        :options="answerOptions"
+        :invalid="hasError('answer')"
       />
+      <FieldMessages :issues="issues('answer')" />
+    </template>
 
-      <div v-if="draft.kind !== 'MAX_UNITS_PER_DAY'">
+    <!-- An welchem Tag? -->
+    <div v-if="shows('day')" class="row">
+      <span v-if="!standalone" class="lead-in" aria-hidden="true">1</span>
+      <div class="row-body">
         <ChoiceGroup
-          v-model="draft.weekday"
-          :name="id('weekday')"
-          legend="An welchem Wochentag?"
-          :options="weekdayOptions"
-          :invalid="issues('weekday').some((i) => i.severity === 'error')"
+          v-model="draft.day"
+          :name="id('day')"
+          legend="An welchem Tag?"
+          :hide-legend="standalone"
+          :variant="standalone ? 'cards' : 'segmented'"
+          :options="dayOptions"
+          :invalid="hasError('day', 'weekday')"
         />
-        <p class="hint">Ein Terminwunsch kann sich immer nur auf einen Wochentag beziehen.</p>
-        <FieldMessages :issues="issues('weekday')" />
+        <FieldMessages :issues="[...issues('day'), ...issues('weekday')]" />
       </div>
+    </div>
 
-      <!-- Tag mit Uhrzeit -->
-      <template v-if="draft.kind === 'DAY_TIME'">
+    <!-- Was genau? -->
+    <div v-if="shows('what') && draft.day" class="row">
+      <span v-if="!standalone" class="lead-in" aria-hidden="true">2</span>
+
+      <div v-if="draft.day !== EVERY_DAY" class="row-body">
         <ChoiceGroup
-          v-model="draft.blocked"
-          :name="id('blocked')"
-          legend="Was möchten Sie an diesem Tag?"
-          :options="[
-            {
-              value: 'BEFORE',
-              label: 'Erst ab einer bestimmten Uhrzeit lehren',
-              description: 'z. B. „montags erst ab 10 Uhr“',
-            },
-            {
-              value: 'AFTER',
-              label: 'Ab einer bestimmten Uhrzeit nicht mehr lehren',
-              description: 'z. B. „freitags ab 13 Uhr keine Lehre mehr“',
-            },
-          ]"
-          variant="cards"
+          v-model="draft.what"
+          :name="id('what')"
+          legend="Was wünschen Sie sich an diesem Tag?"
+          :hide-legend="standalone"
+          :variant="standalone ? 'cards' : 'segmented'"
+          :options="whatOptions"
+          :invalid="hasError('what')"
         />
-        <div class="field time-field">
+        <FieldMessages :issues="issues('what')" />
+
+        <div v-if="needsTime" class="inline-field">
           <label :for="id('time')">
-            {{ draft.blocked === 'BEFORE' ? 'Lehre frühestens ab' : 'Keine Lehre mehr ab' }}
+            {{ draft.what === 'FROM' ? 'Lehre frühestens ab' : 'Lehre höchstens bis' }}
           </label>
           <select :id="id('time')" v-model.number="draft.time" class="select">
             <option v-for="t in timeOptions" :key="t" :value="t">{{ formatTime(t) }} Uhr</option>
           </select>
-          <FieldMessages :issues="issues('time')" />
         </div>
-        <div class="daybar" aria-hidden="true">
-          <div
-            class="part"
-            :class="draft.blocked === 'BEFORE' ? 'off' : 'on'"
-            :style="{ width: `${splitPercent}%` }"
-          >
-            <span>{{ formatTime(config.dayStart) }}</span>
-          </div>
-          <div class="part" :class="draft.blocked === 'BEFORE' ? 'on' : 'off'">
-            <span>{{ formatTime(draft.time) }}</span>
-            <span>{{ formatTime(config.dayEnd) }}</span>
-          </div>
+        <div v-if="draft.what === 'RANGE'" class="inline-field">
+          <label :for="id('time')">Lehre nur von</label>
+          <select :id="id('time')" v-model.number="draft.time" class="select">
+            <option v-for="t in rangeStartOptions" :key="t" :value="t">
+              {{ formatTime(t) }} Uhr
+            </option>
+          </select>
+          <label :for="id('time-end')">bis</label>
+          <select :id="id('time-end')" v-model.number="draft.timeEnd" class="select">
+            <option v-for="t in rangeEndOptions" :key="t" :value="t">
+              {{ formatTime(t) }} Uhr
+            </option>
+          </select>
         </div>
-        <p class="hint">
-          {{ draft.weekday ? WEEKDAY_LABEL[draft.weekday] : 'Am gewählten Tag' }}:
-          <span class="dot on" /> verfügbar · <span class="dot off" /> möglichst keine Lehre ({{
-            draft.blocked === 'BEFORE'
-              ? `bis ${formatClock(draft.time)}`
-              : `ab ${formatClock(draft.time)}`
-          }})
-        </p>
-      </template>
+        <FieldMessages :issues="issues('time')" />
+      </div>
 
-      <!-- Stundenhöchstgrenze -->
-      <div v-if="draft.kind === 'MAX_UNITS_PER_DAY'" class="field">
-        <label :for="id('units')">Höchstens so viele Unterrichtsstunden pro Tag</label>
-        <div class="stepper">
+      <div v-else class="row-body">
+        <span :id="id('units-label')" class="label">Höchstens so viele Unterrichtsstunden</span>
+        <div class="stepper" role="group" :aria-labelledby="id('units-label')">
           <button
             type="button"
             class="btn"
@@ -212,7 +221,7 @@ const splitPercent = computed(() => {
             :min="config.minMaxUnitsPerDay"
             :max="upper"
             :value="draft.units"
-            :aria-invalid="issues('units').some((i) => i.severity === 'error') || undefined"
+            :aria-invalid="hasError('units') || undefined"
             @change="setUnits(Number(($event.target as HTMLInputElement).value))"
           />
           <button
@@ -224,18 +233,18 @@ const splitPercent = computed(() => {
           >
             +
           </button>
-          <span class="unit">Unterrichtsstunden à {{ config.unitMinutes }} Minuten</span>
+          <span class="unit">pro Tag (à {{ config.unitMinutes }} Min.)</span>
         </div>
         <p class="hint">
-          Mindestens {{ config.minMaxUnitsPerDay }}. Gilt für alle Tage und kann nicht mit einem
-          Wochentag oder einer Uhrzeit kombiniert werden.
+          Mindestens {{ config.minMaxUnitsPerDay }}. Gilt für alle Tage und lässt sich nicht mit
+          einem Wochentag kombinieren.
         </p>
         <FieldMessages :issues="issues('units')" />
       </div>
     </div>
 
-    <p v-if="preview" class="preview">
-      <span class="preview-label">Ihr Wunsch lautet:</span>
+    <p v-if="preview" class="preview" aria-live="polite">
+      <span class="preview-label">Ihr Wunsch lautet</span>
       „{{ preview }}“
     </p>
   </div>
@@ -248,67 +257,58 @@ const splitPercent = computed(() => {
   gap: 4px;
 }
 
-.details {
+.wish.compact {
+  gap: 16px;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.lead-in {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.row-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin-top: 16px;
-  padding: 16px;
-  border-radius: var(--radius);
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.inline-field {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
   background: var(--surface-alt);
   border: 1px solid var(--border);
 }
 
-.time-field {
-  max-width: 220px;
+.inline-field label {
+  font-weight: 600;
+  font-size: 0.92rem;
 }
 
-.daybar {
-  display: flex;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1px solid var(--border);
-  font-size: 0.75rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.part {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 6px;
-  flex: 1;
-  transition: width 0.15s;
-}
-
-.part:first-child {
-  flex: none;
-}
-
-.on {
-  background: var(--st-available-bg);
-  color: #24602a;
-}
-
-.off {
-  background: repeating-linear-gradient(
-    -45deg,
-    var(--st-unavailable-bg),
-    var(--st-unavailable-bg) 6px,
-    #f6c4c4 6px,
-    #f6c4c4 12px
-  );
-  color: #8e1c1c;
-}
-
-.dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-  vertical-align: -1px;
-  border: 1px solid var(--border-strong);
+.inline-field .select {
+  width: auto;
+  min-width: 130px;
 }
 
 .stepper {
@@ -341,10 +341,11 @@ const splitPercent = computed(() => {
 }
 
 .preview {
-  margin: 14px 0 0;
+  margin: 16px 0 0;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
   background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
   font-size: 1rem;
 }
 

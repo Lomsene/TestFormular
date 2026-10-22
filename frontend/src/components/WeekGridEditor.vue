@@ -24,8 +24,9 @@ const slots = computed(() =>
 
 const BRUSHES: { mark: GridMark; label: string; key: string }[] = [
   { mark: 'AVAILABLE', label: 'Verfügbar', key: '1' },
-  { mark: 'ONLINE_ONLY', label: 'Nur online', key: '2' },
-  { mark: 'UNAVAILABLE', label: 'Nicht verfügbar (Radierer)', key: '3' },
+  { mark: 'PREFERRED', label: 'Bevorzugt', key: '2' },
+  { mark: 'ONLINE_ONLY', label: 'Nur online', key: '3' },
+  { mark: 'UNAVAILABLE', label: 'Nicht verfügbar (Radierer)', key: '4' },
 ]
 
 function set(day: Weekday, i: number, mark: GridMark = brush.value) {
@@ -110,6 +111,7 @@ function onKey(day: Weekday, i: number, event: KeyboardEvent) {
 }
 
 const markLabel: Record<GridMark, string> = {
+  PREFERRED: 'bevorzugt',
   AVAILABLE: 'verfügbar',
   ONLINE_ONLY: 'nur online',
   UNAVAILABLE: 'nicht verfügbar',
@@ -177,7 +179,8 @@ const markLabel: Record<GridMark, string> = {
     </div>
     <p class="hint">
       Tipp: Mit gedrückter Maustaste einen Bereich aufziehen, auch über mehrere Tage. „ganzer Tag“
-      füllt den Tag mit dem gewählten Pinsel. Zum Entfernen den Radierer wählen.
+      füllt den Tag mit dem gewählten Pinsel. <strong>Bevorzugt</strong> heißt: Da passt es Ihnen am
+      besten. Zum Entfernen den Radierer wählen.
     </p>
   </div>
 </template>
@@ -295,7 +298,11 @@ const markLabel: Record<GridMark, string> = {
 }
 
 .m-AVAILABLE {
-  background: #b9e2bf;
+  background: #c6e8cb;
+}
+
+.m-PREFERRED {
+  background: #4fae63;
 }
 
 .m-ONLINE_ONLY {
@@ -311,13 +318,18 @@ const markLabel: Record<GridMark, string> = {
 }
 
 .brush.m-AVAILABLE,
+.brush.m-PREFERRED,
 .brush.m-ONLINE_ONLY,
 .brush.m-UNAVAILABLE {
   background: var(--surface);
 }
 
 .brush.m-AVAILABLE .sw {
-  background: #b9e2bf;
+  background: #c6e8cb;
+}
+
+.brush.m-PREFERRED .sw {
+  background: #4fae63;
 }
 
 .brush.m-ONLINE_ONLY .sw {

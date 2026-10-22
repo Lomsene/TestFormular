@@ -103,12 +103,31 @@ describe('Merkblatt-Regeln (hauptamtlich)', () => {
   })
 })
 
+describe('Wunsch von … bis', () => {
+  const range = (start: number, end: number) =>
+    fields(fullTime([{ kind: 'DAY_RANGE', weekday: 'WE', start, end }]))
+
+  it('Ende muss nach dem Beginn liegen', () => {
+    expect(range(14 * 60, 10 * 60)).toEqual(['wish.0.time'])
+  })
+
+  it('gültiger Zeitraum ist in Ordnung', () => {
+    expect(range(10 * 60, 14 * 60)).toEqual([])
+  })
+})
+
 describe('Raster', () => {
   it('komplett leeres Raster ist ein Fehler', () => {
     expect(
       hasErrors(
         validateEntry(
-          { kind: 'FREELANCE', grid: emptyGrid(cfg), note: '', sameAsPreviousYear: null },
+          {
+            kind: 'FREELANCE',
+            grid: emptyGrid(cfg),
+            exceptions: [],
+            note: '',
+            sameAsPreviousYear: null,
+          },
           cfg,
         ),
       ),
@@ -120,11 +139,29 @@ describe('Raster', () => {
     expect(
       hasErrors(
         validateEntry(
-          { kind: 'FREELANCE', grid: emptyGrid(cfg), note: '', sameAsPreviousYear },
+          { kind: 'FREELANCE', grid: emptyGrid(cfg), exceptions: [], note: '', sameAsPreviousYear },
           cfg,
         ),
       ),
     ).toBe(false)
+  })
+
+  it('Abweichung mit Zeitraum: Ende muss nach dem Beginn liegen', () => {
+    const grid = emptyGrid(cfg, 'AVAILABLE')
+    const issues = validateEntry(
+      {
+        kind: 'FREELANCE',
+        grid,
+        exceptions: [
+          { date: '2027-01-05', mark: 'UNAVAILABLE', time: null },
+          { date: '2027-01-06', mark: 'UNAVAILABLE', time: { start: 14 * 60, end: 10 * 60 } },
+        ],
+        note: '',
+        sameAsPreviousYear: null,
+      },
+      cfg,
+    )
+    expect(issues.map((i) => i.field)).toEqual(['exceptions.1'])
   })
 })
 

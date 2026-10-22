@@ -4,10 +4,9 @@ import StepIndicator from './components/StepIndicator.vue'
 import SuccessView from './components/SuccessView.vue'
 import SummaryView from './components/SummaryView.vue'
 import WeekPreview from './components/WeekPreview.vue'
+import StepDetails from './components/steps/StepDetails.vue'
 import StepGrid from './components/steps/StepGrid.vue'
-import StepLastBlock from './components/steps/StepLastBlock.vue'
 import StepPerson from './components/steps/StepPerson.vue'
-import StepPresidium from './components/steps/StepPresidium.vue'
 import StepWish from './components/steps/StepWish.vue'
 import { useAvailabilityForm, type StepId } from './composables/useAvailabilityForm'
 import { formatDate } from './domain/format'
@@ -28,7 +27,9 @@ const blocked = ref(false)
 const isLast = computed(() => step.value.id === 'review')
 /** Vorschau neben dem Formular nur dort, wo sie beim Ausfüllen hilft. */
 const showAside = computed(
-  () => state.kind === 'FULL_TIME' && ['wish', 'lastBlock', 'presidium'].includes(step.value.id),
+  () =>
+    state.kind === 'FULL_TIME' &&
+    ['wish', 'wishDay', 'wishWhat', 'details'].includes(step.value.id),
 )
 
 async function focusStep() {
@@ -150,9 +151,10 @@ function restart() {
         <div class="layout" :class="{ 'with-aside': showAside }">
           <form class="form" novalidate @submit.prevent="isLast ? submit() : next()">
             <StepPerson v-if="step.id === 'person'" :form="form" />
-            <StepWish v-else-if="step.id === 'wish'" :form="form" />
-            <StepLastBlock v-else-if="step.id === 'lastBlock'" :form="form" />
-            <StepPresidium v-else-if="step.id === 'presidium'" :form="form" />
+            <StepWish v-else-if="step.id === 'wish'" :form="form" part="answer" />
+            <StepWish v-else-if="step.id === 'wishDay'" :form="form" part="day" />
+            <StepWish v-else-if="step.id === 'wishWhat'" :form="form" part="what" />
+            <StepDetails v-else-if="step.id === 'details'" :form="form" />
             <StepGrid
               v-else-if="
                 step.id === 'grid' && (state.kind === 'FREELANCE' || state.kind === 'PART_TIME')

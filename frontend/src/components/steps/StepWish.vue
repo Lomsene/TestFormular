@@ -2,13 +2,19 @@
 import { computed, watch } from 'vue'
 import type { AvailabilityForm } from '../../composables/useAvailabilityForm'
 import { blockLabel } from '../../domain/config'
-import { describeWish } from '../../domain/format'
+import { EVERY_DAY, draftToWish } from '../../domain/draft'
+import { WEEKDAY_ADVERB, describeWish } from '../../domain/format'
 import { MAX_WISHES_WITH_EXCEPTION } from '../../domain/validation'
 import FieldMessages from '../FieldMessages.vue'
 import PreviousYearPanel from '../PreviousYearPanel.vue'
 import WishEditor from '../WishEditor.vue'
 
-const props = defineProps<{ form: AvailabilityForm }>()
+/**
+ * Terminwunsch Schritt für Schritt – je Bildschirm genau eine Frage:
+ * answer: Haben Sie einen Wunsch? → day: An welchem Tag? → what: Was genau?
+ * Weitere Wünsche (Ausnahmefall) stehen kompakt im letzten Schritt.
+ */
+const props = defineProps<{ form: AvailabilityForm; part: 'answer' | 'day' | 'what' }>()
 const {
   state,
   config,
@@ -21,101 +27,134 @@ const {
 } = props.form
 const ft = state.fullTime
 
-const firstKind = computed(() => ft.drafts[0]?.kind ?? null)
-const isSame = computed(() => firstKind.value === 'SAME_AS_LAST_YEAR')
+const first = computed(() => ft.drafts[0]!)
+const isSame = computed(() => first.value.answer === 'SAME_AS_LAST_YEAR')
+const extras = computed(() => ft.drafts.slice(1))
 const canAddExtra = computed(
-  () =>
-    firstKind.value !== null &&
-    firstKind.value !== 'NONE' &&
-    !isSame.value &&
-    ft.drafts.length < MAX_WISHES_WITH_EXCEPTION,
+  () => draftToWish(first.value) !== null && ft.drafts.length < MAX_WISHES_WITH_EXCEPTION,
 )
 
 // „Kein Wunsch“ oder „wie im letzten Jahr“: Zusätzliche Wünsche ergeben keinen Sinn mehr.
-watch(firstKind, (kind) => {
-  if (kind === 'NONE' || kind === 'SAME_AS_LAST_YEAR') {
-    while (ft.drafts.length > 1) removeWish(ft.drafts.length - 1)
-  }
-})
+watch(
+  () => first.value.answer,
+  (answer) => {
+    if (answer !== 'WISH') {
+      while (ft.drafts.length > 1) removeWish(ft.drafts.length - 1)
+    }
+  },
+)
 
 const previousLabel = computed(() =>
   previousBlockId.value ? blockLabel(previousBlockId.value) : null,
 )
 const previousWishes = computed(() => previousFullTime.value?.wishes.map(describeWish) ?? [])
+
+const title = computed(() => {
+  switch (props.part) {
+    case 'answer':
+      return 'Haben Sie einen Terminwunsch?'
+    case 'day':
+      return 'An welchem Tag?'
+    case 'what': {
+      const day = first.value.day
+      if (day === EVERY_DAY) return 'Wie viele Stunden höchstens pro Tag?'
+      return day ? `Was wünschen Sie sich ${WEEKDAY_ADVERB[day]}?` : 'Was wünschen Sie sich?'
+    }
+  }
+})
 </script>
 
 <template>
   <section class="card" aria-labelledby="step-head">
-    <h2 id="step-head" class="step-title" tabindex="-1">Ihr Terminwunsch</h2>
-    <p class="notice notice-info intro">
-      Sie können <strong>einen</strong> Terminwunsch angeben. Er wird berücksichtigt, soweit es die
-      Planung zulässt. Ein Anspruch besteht nicht. Ohne Angabe plant die Stundenplanung Sie frei
-      nach Bedarf ein.
+    <h2 id="step-head" class="step-title" tabindex="-1">{{ title }}</h2>
+
+    <p v-if="part === 'answer'" class="hint intro">
+      Ein Wunsch gilt für einen Wochentag. Er wird berücksichtigt, soweit die Planung es zulässt.
+    </p>
+    <p v-else-if="part === 'day'" class="hint intro">
+      Ein Terminwunsch bezieht sich immer auf genau einen Wochentag.
     </p>
 
-    <div v-for="(draft, i) in ft.drafts" :key="i" class="wish-block" :class="{ extra: i > 0 }">
-      <div v-if="i > 0" class="extra-head">
-        <h3>Weiterer Wunsch {{ i + 1 }} <span class="tag">Ausnahmefall</span></h3>
-        <button type="button" class="btn-link" @click="removeWish(i)">Entfernen</button>
+    <WishEditor
+      :draft="first"
+      :index="0"
+      :config="config"
+      :issues-for="issuesFor"
+      :part="part"
+      :previous-label="previousLabel"
+    />
+
+    <!-- Wie im letzten Jahr -->
+    <template v-if="part === 'answer' && isSame">
+      <PreviousYearPanel
+        :previous-block-id="previousBlockId"
+        :found="previousFullTime !== null"
+        :email="state.lecturer.email"
+        @adopt="adoptPreviousWishes"
+      >
+        <template v-if="previousWishes.length === 0">Kein Wunsch (freie Einplanung)</template>
+        <ul v-else class="prev-list">
+          <li v-for="(w, i) in previousWishes" :key="i">„{{ w }}“</li>
+        </ul>
+      </PreviousYearPanel>
+      <FieldMessages :issues="issuesFor('wish.0.weekday')" />
+    </template>
+
+    <!-- Weitere Wünsche (Ausnahmefall) -->
+    <template v-if="part === 'what'">
+      <div v-for="(draft, j) in extras" :key="j + 1" class="extra">
+        <div class="extra-head">
+          <h3>Weiterer Wunsch {{ j + 2 }} <span class="tag">Ausnahmefall</span></h3>
+          <button type="button" class="btn-link" @click="removeWish(j + 1)">Entfernen</button>
+        </div>
+        <WishEditor
+          :draft="draft"
+          :index="j + 1"
+          :config="config"
+          :issues-for="issuesFor"
+          part="compact"
+        />
       </div>
-      <WishEditor
-        :draft="draft"
-        :index="i"
-        :config="config"
-        :issues-for="issuesFor"
-        :allow-none="i === 0"
-        :previous-label="previousLabel"
-      />
-    </div>
 
-    <PreviousYearPanel
-      v-if="isSame"
-      :previous-block-id="previousBlockId"
-      :found="previousFullTime !== null"
-      :email="state.lecturer.email"
-      @adopt="adoptPreviousWishes"
-    >
-      <template v-if="previousWishes.length === 0">Kein Wunsch (freie Einplanung)</template>
-      <ul v-else class="prev-list">
-        <li v-for="(w, i) in previousWishes" :key="i">„{{ w }}“</li>
-      </ul>
-    </PreviousYearPanel>
+      <div v-if="extras.length" class="exception">
+        <label class="check">
+          <input v-model="ft.exceptionAgreedWithPresidium" type="checkbox" />
+          <span>
+            Ich habe den zusätzlichen Wunsch vorab mit dem Präsidium abgestimmt.<span
+              class="req"
+              aria-hidden="true"
+              >*</span
+            >
+          </span>
+        </label>
+        <p class="hint">
+          Bei Widersprüchen hat der zuerst genannte Wunsch Vorrang. Ohne Abstimmung kann nur der
+          erste Wunsch berücksichtigt werden.
+        </p>
+      </div>
+      <FieldMessages :issues="issuesFor('exception')" />
 
-    <div v-if="ft.drafts.length > 1" class="exception">
-      <label class="check">
-        <input v-model="ft.exceptionAgreedWithPresidium" type="checkbox" />
-        <span>
-          Ich habe den zusätzlichen Wunsch vorab mit dem Präsidium abgestimmt.<span
-            class="req"
-            aria-hidden="true"
-            >*</span
-          >
-        </span>
-      </label>
-      <p class="hint">
-        Bei Widersprüchen hat der zuerst genannte Wunsch Vorrang. Ohne Abstimmung kann nur der erste
-        Wunsch berücksichtigt werden.
+      <p v-if="canAddExtra" class="add-extra">
+        <button type="button" class="btn-link" @click="addExtraWish">
+          + Weiteren Wunsch hinzufügen
+        </button>
+        <span class="hint">nur nach Abstimmung mit dem Präsidium</span>
       </p>
-    </div>
-    <FieldMessages :issues="issuesFor('exception')" />
-
-    <p v-if="canAddExtra" class="add-extra">
-      <button type="button" class="btn-link" @click="addExtraWish">
-        + Weiteren Wunsch hinzufügen
-      </button>
-      <span class="hint">
-        Nur in begründeten Ausnahmefällen und nach Abstimmung mit dem Präsidium.
-      </span>
-    </p>
+    </template>
   </section>
 </template>
 
 <style scoped>
 .intro {
-  margin: 0 0 16px;
+  margin: -6px 0 18px;
 }
 
-.wish-block.extra {
+.prev-list {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.extra {
   margin-top: 20px;
   padding-top: 18px;
   border-top: 1px dashed var(--border-strong);
@@ -140,11 +179,6 @@ const previousWishes = computed(() => previousFullTime.value?.wishes.map(describ
   color: var(--warning);
   font-size: 0.75rem;
   font-weight: 600;
-}
-
-.prev-list {
-  margin: 0;
-  padding-left: 1.2em;
 }
 
 .exception {
@@ -174,7 +208,7 @@ const previousWishes = computed(() => previousFullTime.value?.wishes.map(describ
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  margin: 16px 0 0;
+  margin: 20px 0 0;
 }
 
 .add-extra .hint {

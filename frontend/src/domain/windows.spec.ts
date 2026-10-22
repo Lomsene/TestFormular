@@ -149,6 +149,20 @@ describe('computeAvailability – hauptamtlich', () => {
   })
 })
 
+describe('computeAvailability – von … bis', () => {
+  it('„mittwochs nur von 10 bis 14 Uhr“ sperrt davor und danach weich', () => {
+    const r = computeAvailability(
+      fullTime([{ kind: 'DAY_RANGE', weekday: 'WE', start: H(10), end: H(14) }]),
+      cfg,
+    )
+    expect(r.windows.filter((w) => w.weekday === 'WE').map(strip)).toEqual([
+      ['WE', H(8), H(10), 'UNAVAILABLE', 'SOFT'],
+      ['WE', H(10), H(14), 'AVAILABLE', 'HARD'],
+      ['WE', H(14), H(18), 'UNAVAILABLE', 'SOFT'],
+    ])
+  })
+})
+
 describe('computeAvailability – Raster (Freiberufler/Teilzeit)', () => {
   it('fasst markierte Slots zu harten Zeitfenstern zusammen', () => {
     const grid = emptyGrid(cfg)
@@ -157,7 +171,7 @@ describe('computeAvailability – Raster (Freiberufler/Teilzeit)', () => {
     grid.WE[8] = 'ONLINE_ONLY'
     grid.WE[9] = 'ONLINE_ONLY'
     const r = computeAvailability(
-      { kind: 'FREELANCE', grid, note: '', sameAsPreviousYear: null },
+      { kind: 'FREELANCE', grid, exceptions: [], note: '', sameAsPreviousYear: null },
       cfg,
     )
     expect(r.lecturerKind).toBe('FREELANCE')
@@ -166,6 +180,59 @@ describe('computeAvailability – Raster (Freiberufler/Teilzeit)', () => {
       ['WE', H(9), H(12), 'AVAILABLE', 'HARD'],
       ['WE', H(12), H(13), 'ONLINE_ONLY', 'HARD'],
       ['WE', H(13), H(18), 'UNAVAILABLE', 'HARD'],
+    ])
+  })
+
+  it('bevorzugte Zeiten werden als PREFERRED übergeben', () => {
+    const grid = emptyGrid(cfg)
+    grid.MO[0] = 'PREFERRED'
+    grid.MO[1] = 'AVAILABLE'
+    const r = computeAvailability(
+      { kind: 'PART_TIME', grid, exceptions: [], note: '', sameAsPreviousYear: null },
+      cfg,
+    )
+    expect(
+      r.windows
+        .filter((w) => w.weekday === 'MO')
+        .map(strip)
+        .slice(0, 2),
+    ).toEqual([
+      ['MO', H(8), H(8.5), 'PREFERRED', 'HARD'],
+      ['MO', H(8.5), H(9), 'AVAILABLE', 'HARD'],
+    ])
+  })
+
+  it('Abweichungen an einzelnen Tagen werden als Datumsfenster übergeben', () => {
+    const r = computeAvailability(
+      {
+        kind: 'FREELANCE',
+        grid: emptyGrid(cfg, 'AVAILABLE'),
+        exceptions: [
+          { date: '2027-01-05', mark: 'UNAVAILABLE', time: null },
+          { date: '2027-01-08', mark: 'AVAILABLE', time: { start: H(14), end: H(16) } },
+        ],
+        note: '',
+        sameAsPreviousYear: null,
+      },
+      cfg,
+    )
+    expect(r.exceptions).toEqual([
+      {
+        date: '2027-01-05',
+        weekday: 'TU',
+        start: H(8),
+        end: H(18),
+        status: 'UNAVAILABLE',
+        hardness: 'HARD',
+      },
+      {
+        date: '2027-01-08',
+        weekday: 'FR',
+        start: H(14),
+        end: H(16),
+        status: 'AVAILABLE',
+        hardness: 'HARD',
+      },
     ])
   })
 })

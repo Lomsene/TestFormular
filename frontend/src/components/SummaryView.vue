@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { blockLabel, type PlanningConfig } from '../domain/config'
-import { STATUS_LABEL, WEEKDAY_LABEL, describeWish, formatTime } from '../domain/format'
-import type { AvailabilityExport, TimeWindow } from '../domain/types'
+import { weekdayOf } from '../domain/calendar'
+import {
+  STATUS_LABEL,
+  WEEKDAY_LABEL,
+  WEEKDAY_SHORT,
+  describeWish,
+  formatDate,
+  formatTime,
+} from '../domain/format'
+import type { AvailabilityExport, DateException, TimeWindow } from '../domain/types'
 import WeekPreview from './WeekPreview.vue'
 
 /** Zusammenfassung + Zeitfenster – genutzt im Prüfschritt und nach dem Absenden. */
@@ -12,7 +20,7 @@ const props = defineProps<{
   /** Im Prüfschritt: Abschnitte lassen sich direkt zum Bearbeiten anspringen. */
   editable?: boolean
 }>()
-defineEmits<{ edit: [step: 'person' | 'wish' | 'lastBlock' | 'presidium' | 'grid'] }>()
+defineEmits<{ edit: [step: 'person' | 'wish' | 'details' | 'grid'] }>()
 
 const KIND_LABEL = {
   FULL_TIME: 'Hauptamtlich Lehrende/r',
@@ -48,6 +56,13 @@ const answers = computed(() => props.data.answers)
 const wishes = computed(() =>
   answers.value.kind === 'FULL_TIME' ? answers.value.wishes.map(describeWish) : [],
 )
+
+function describeException(e: DateException): string {
+  const weekday = weekdayOf(e.date)
+  const day = weekday ? `${WEEKDAY_SHORT[weekday]}, ${formatDate(e.date)}` : formatDate(e.date)
+  const time = e.time ? ` ${formatTime(e.time.start)}–${formatTime(e.time.end)} Uhr` : ''
+  return `${day}${time}: ${e.mark === 'UNAVAILABLE' ? 'geht nicht' : 'geht ausnahmsweise doch'}`
+}
 
 function sameLabel(ref: { blockId: string } | null | undefined): string {
   return ref ? `wie im letzten Jahr (${blockLabel(ref.blockId)})` : ''
@@ -116,7 +131,7 @@ function sameLabel(ref: { blockId: string } | null | undefined): string {
             v-if="editable"
             type="button"
             class="btn-link edit"
-            @click="$emit('edit', 'lastBlock')"
+            @click="$emit('edit', 'details')"
           >
             ändern
           </button>
@@ -141,7 +156,7 @@ function sameLabel(ref: { blockId: string } | null | undefined): string {
             v-if="editable"
             type="button"
             class="btn-link edit"
-            @click="$emit('edit', 'presidium')"
+            @click="$emit('edit', 'details')"
           >
             ändern
           </button>
@@ -167,6 +182,20 @@ function sameLabel(ref: { blockId: string } | null | undefined): string {
             ändern
           </button>
         </dd>
+        <template v-if="answers.exceptions?.length">
+          <dt>Besonderheiten</dt>
+          <dd>
+            <ul class="exceptions">
+              <li
+                v-for="e in answers.exceptions"
+                :key="e.date"
+                :class="e.mark === 'UNAVAILABLE' ? 'hd-HARD' : 'st-AVAILABLE'"
+              >
+                {{ describeException(e) }}
+              </li>
+            </ul>
+          </dd>
+        </template>
         <template v-if="answers.note">
           <dt>Anmerkungen</dt>
           <dd>{{ answers.note }}</dd>
@@ -259,6 +288,22 @@ function sameLabel(ref: { blockId: string } | null | undefined): string {
 .wishes {
   margin: 0;
   padding-left: 1.2em;
+}
+
+.exceptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.exceptions li {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .pending {

@@ -1,5 +1,5 @@
 import type { PlanningConfig } from './config'
-import { WEEKDAY_ADVERB, capitalize, formatClock } from './format'
+import { WEEKDAY_ADVERB, capitalize, formatClock, formatDate } from './format'
 import type {
   AvailabilityEntry,
   FullTimeEntry,
@@ -61,7 +61,7 @@ export function validateLecturer(lecturer: LecturerData): Issue[] {
 }
 
 export function validateEntry(entry: AvailabilityEntry, config: PlanningConfig): Issue[] {
-  return entry.kind === 'FULL_TIME' ? validateFullTime(entry, config) : validateGrid(entry)
+  return entry.kind === 'FULL_TIME' ? validateFullTime(entry, config) : validateGrid(entry, config)
 }
 
 function validateWish(wish: ScheduleWish, index: number, config: PlanningConfig): Issue[] {
@@ -83,6 +83,32 @@ function validateWish(wish: ScheduleWish, index: number, config: PlanningConfig)
         severity: 'error',
         field: at('time'),
         message: `Bitte wählen Sie eine Uhrzeit zwischen ${formatClock(config.dayStart)} und ${formatClock(config.dayEnd)}.`,
+      })
+    }
+  }
+
+  if (wish.kind === 'DAY_RANGE') {
+    const onGrid = [wish.start, wish.end].every(
+      (t) => (t - config.dayStart) % config.slotMinutes === 0,
+    )
+    if (wish.start < config.dayStart || wish.end > config.dayEnd || !onGrid) {
+      issues.push({
+        severity: 'error',
+        field: at('time'),
+        message: `Bitte wählen Sie Uhrzeiten zwischen ${formatClock(config.dayStart)} und ${formatClock(config.dayEnd)}.`,
+      })
+    } else if (wish.start >= wish.end) {
+      issues.push({
+        severity: 'error',
+        field: at('time'),
+        message: 'Das Ende muss nach dem Beginn liegen.',
+      })
+    } else if (wish.start === config.dayStart && wish.end === config.dayEnd) {
+      issues.push({
+        severity: 'warning',
+        field: at('time'),
+        message:
+          'Dieser Zeitraum umfasst den ganzen Lehrtag. Der Wunsch schränkt die Planung nicht ein.',
       })
     }
   }
@@ -199,21 +225,38 @@ function validateFullTime(entry: FullTimeEntry, config: PlanningConfig): Issue[]
   return issues
 }
 
-function validateGrid(entry: GridEntry): Issue[] {
+function validateGrid(entry: GridEntry, config: PlanningConfig): Issue[] {
+  const issues: Issue[] = []
+
+  entry.exceptions.forEach((e, i) => {
+    if (e.time && e.time.start >= e.time.end) {
+      issues.push({
+        severity: 'error',
+        field: `exceptions.${i}`,
+        message: `${formatDate(e.date)}: Das Ende muss nach dem Beginn liegen.`,
+      })
+    } else if (e.time && (e.time.start < config.dayStart || e.time.end > config.dayEnd)) {
+      issues.push({
+        severity: 'error',
+        field: `exceptions.${i}`,
+        message: `${formatDate(e.date)}: Bitte eine Zeit zwischen ${formatClock(config.dayStart)} und ${formatClock(config.dayEnd)} wählen.`,
+      })
+    }
+  })
+
   // „Wie im letzten Jahr“ ohne vorliegende Daten: Raster bleibt leer, die Hauptanwendung ergänzt.
-  if (entry.sameAsPreviousYear && !entry.sameAsPreviousYear.resolved) return []
+  if (entry.sameAsPreviousYear && !entry.sameAsPreviousYear.resolved) return issues
   const anyAvailable = Object.values(entry.grid).some((day) =>
     day.some((mark) => mark !== 'UNAVAILABLE'),
   )
-  return anyAvailable
-    ? []
-    : [
-        {
-          severity: 'error',
-          field: 'grid',
-          message: 'Bitte markieren Sie mindestens ein Zeitfenster, in dem Sie lehren können.',
-        },
-      ]
+  if (!anyAvailable) {
+    issues.push({
+      severity: 'error',
+      field: 'grid',
+      message: 'Bitte markieren Sie mindestens ein Zeitfenster, in dem Sie lehren können.',
+    })
+  }
+  return issues
 }
 
 export function hasErrors(issues: Issue[]): boolean {

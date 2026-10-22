@@ -58,6 +58,8 @@ export function describeWish(wish: ScheduleWish): string {
       return wish.blocked === 'BEFORE'
         ? `Ich möchte ${WEEKDAY_ADVERB[wish.weekday]} erst ab ${formatClock(wish.time)} Lehrveranstaltungen abhalten.`
         : `Ich möchte ${WEEKDAY_ADVERB[wish.weekday]} ab ${formatClock(wish.time)} keine Lehrveranstaltungen abhalten.`
+    case 'DAY_RANGE':
+      return `Ich möchte ${WEEKDAY_ADVERB[wish.weekday]} nur von ${formatClock(wish.start)} bis ${formatClock(wish.end)} Lehrveranstaltungen abhalten.`
     case 'ONLINE_ONLY':
       return `Ich möchte ${WEEKDAY_ADVERB[wish.weekday]} nur Online-Lehrveranstaltungen abhalten.`
     case 'MAX_UNITS_PER_DAY':
@@ -76,6 +78,8 @@ export function describeWishShort(wish: ScheduleWish): string {
       return wish.blocked === 'BEFORE'
         ? `${WEEKDAY_ADVERB[wish.weekday]} erst ab ${formatClock(wish.time)}`
         : `${WEEKDAY_ADVERB[wish.weekday]} nicht ab ${formatClock(wish.time)}`
+    case 'DAY_RANGE':
+      return `${WEEKDAY_ADVERB[wish.weekday]} nur ${formatTime(wish.start)}–${formatTime(wish.end)} Uhr`
     case 'ONLINE_ONLY':
       return `${WEEKDAY_ADVERB[wish.weekday]} nur online`
     case 'MAX_UNITS_PER_DAY':

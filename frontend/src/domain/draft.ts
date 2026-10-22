@@ -1,58 +1,98 @@
 import type { PlanningConfig } from './config'
-import type { ScheduleWish, Weekday, WishKind } from './types'
+import type { ScheduleWish, Weekday } from './types'
 
 /**
- * Bearbeitungszustand eines Wunsches im Formular. Alle Felder bleiben erhalten, wenn
- * die Wunschart gewechselt wird – so gehen Eingaben beim Ausprobieren nicht verloren.
+ * Bearbeitungszustand eines Wunsches im Formular – aufgebaut wie der Satz im Merkblatt:
+ * „Ich möchte [montags] [keine Lehre].“ Erst der Tag, dann was an diesem Tag gelten soll.
+ * „Jeden Tag“ lässt nur die Stundenhöchstgrenze zu (Merkblatt: kein Wunsch über mehrere Tage).
+ *
+ * Alle Felder bleiben beim Umschalten erhalten – so gehen Eingaben beim Ausprobieren nicht verloren.
  */
+export type WishAnswer = 'NONE' | 'WISH' | 'SAME_AS_LAST_YEAR'
+
+/** Was an dem gewählten Wochentag gelten soll. */
+export type WishWhat = 'AVOID' | 'PREFER' | 'FROM' | 'UNTIL' | 'RANGE' | 'ONLINE'
+
+export const EVERY_DAY = 'EVERY_DAY'
+
 export interface WishDraft {
-  /** NONE = kein Wunsch, SAME_AS_LAST_YEAR = wie im letzten Jahr (nur beim ersten Wunsch). */
-  kind: WishKind | 'NONE' | 'SAME_AS_LAST_YEAR' | null
-  weekday: Weekday | null
-  preference: 'PREFER' | 'AVOID'
-  blocked: 'BEFORE' | 'AFTER'
+  /** „Haben Sie einen Terminwunsch?“ – nur beim ersten Wunsch gefragt, weitere sind immer WISH. */
+  answer: WishAnswer | null
+  day: Weekday | typeof EVERY_DAY | null
+  what: WishWhat | null
+  /** Uhrzeit bei „erst ab“ / „nur bis“, Beginn bei „von … bis“. */
   time: number
+  /** Ende bei „von … bis“. */
+  timeEnd: number
   units: number
 }
 
-export function newWishDraft(config: PlanningConfig, kind: WishDraft['kind'] = null): WishDraft {
+export function newWishDraft(
+  config: PlanningConfig,
+  answer: WishDraft['answer'] = null,
+): WishDraft {
   return {
-    kind,
-    weekday: null,
-    preference: 'AVOID',
-    blocked: 'AFTER',
+    answer,
+    day: null,
+    what: null,
     time: Math.min(13 * 60, config.dayEnd - config.slotMinutes),
+    timeEnd: Math.min(16 * 60, config.dayEnd),
     units: config.minMaxUnitsPerDay,
   }
 }
 
 /** Ein Entwurf ist erst ein Wunsch, wenn alles Nötige ausgewählt ist. */
 export function draftToWish(d: WishDraft): ScheduleWish | null {
-  switch (d.kind) {
-    case 'DAY':
-      return d.weekday ? { kind: 'DAY', weekday: d.weekday, preference: d.preference } : null
-    case 'DAY_TIME':
-      return d.weekday
-        ? { kind: 'DAY_TIME', weekday: d.weekday, blocked: d.blocked, time: d.time }
-        : null
-    case 'ONLINE_ONLY':
-      return d.weekday ? { kind: 'ONLINE_ONLY', weekday: d.weekday } : null
-    case 'MAX_UNITS_PER_DAY':
-      return { kind: 'MAX_UNITS_PER_DAY', units: d.units }
+  if (d.answer !== 'WISH' || d.day === null) return null
+  if (d.day === EVERY_DAY) return { kind: 'MAX_UNITS_PER_DAY', units: d.units }
+  const weekday = d.day
+  switch (d.what) {
+    case 'AVOID':
+    case 'PREFER':
+      return { kind: 'DAY', weekday, preference: d.what }
+    case 'FROM':
+      return { kind: 'DAY_TIME', weekday, blocked: 'BEFORE', time: d.time }
+    case 'UNTIL':
+      return { kind: 'DAY_TIME', weekday, blocked: 'AFTER', time: d.time }
+    case 'RANGE':
+      return { kind: 'DAY_RANGE', weekday, start: d.time, end: d.timeEnd }
+    case 'ONLINE':
+      return { kind: 'ONLINE_ONLY', weekday }
     default:
       return null
   }
 }
 
 export function wishToDraft(wish: ScheduleWish, config: PlanningConfig): WishDraft {
-  return { ...newWishDraft(config), ...wish }
+  const d = newWishDraft(config, 'WISH')
+  switch (wish.kind) {
+    case 'DAY':
+      return { ...d, day: wish.weekday, what: wish.preference }
+    case 'DAY_TIME':
+      return {
+        ...d,
+        day: wish.weekday,
+        what: wish.blocked === 'BEFORE' ? 'FROM' : 'UNTIL',
+        time: wish.time,
+      }
+    case 'DAY_RANGE':
+      return { ...d, day: wish.weekday, what: 'RANGE', time: wish.start, timeEnd: wish.end }
+    case 'ONLINE_ONLY':
+      return { ...d, day: wish.weekday, what: 'ONLINE' }
+    case 'MAX_UNITS_PER_DAY':
+      return { ...d, day: EVERY_DAY, units: wish.units }
+  }
 }
 
-/** Was fehlt noch, damit aus dem Entwurf ein Wunsch wird? (null = vollständig) */
-export function draftMissing(d: WishDraft): string | null {
-  if (d.kind === null) return 'Bitte wählen Sie aus, welche Art von Wunsch Sie haben.'
-  if (d.kind === 'NONE' || d.kind === 'SAME_AS_LAST_YEAR' || d.kind === 'MAX_UNITS_PER_DAY') {
-    return null
+/** Was fehlt noch? Feld (answer | day | what) und Meldung – null = vollständig. */
+export function draftMissing(d: WishDraft): { field: string; message: string } | null {
+  if (d.answer === null) {
+    return { field: 'answer', message: 'Bitte wählen Sie aus, ob Sie einen Terminwunsch haben.' }
   }
-  return d.weekday ? null : 'Bitte wählen Sie einen Wochentag.'
+  if (d.answer !== 'WISH') return null
+  if (d.day === null) return { field: 'day', message: 'Bitte wählen Sie einen Wochentag.' }
+  if (d.day !== EVERY_DAY && d.what === null) {
+    return { field: 'what', message: 'Bitte wählen Sie, was an diesem Tag gelten soll.' }
+  }
+  return null
 }

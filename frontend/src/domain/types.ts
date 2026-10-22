@@ -38,6 +38,15 @@ export interface DayTimeWish {
   time: Minutes
 }
 
+/** „Ich möchte mittwochs nur von 10 bis 14 Uhr Lehrveranstaltungen abhalten.“ */
+export interface DayRangeWish {
+  kind: 'DAY_RANGE'
+  weekday: Weekday
+  /** Zeitraum, in dem gelehrt werden soll – davor und danach möglichst keine Lehre. */
+  start: Minutes
+  end: Minutes
+}
+
 /** „Ich möchte montags nur Online-Lehrveranstaltungen abhalten.“ */
 export interface OnlineOnlyWish {
   kind: 'ONLINE_ONLY'
@@ -50,7 +59,7 @@ export interface MaxUnitsWish {
   units: number
 }
 
-export type ScheduleWish = DayWish | DayTimeWish | OnlineOnlyWish | MaxUnitsWish
+export type ScheduleWish = DayWish | DayTimeWish | DayRangeWish | OnlineOnlyWish | MaxUnitsWish
 export type WishKind = ScheduleWish['kind']
 
 export type LastBlockAnswer = 'YES' | 'NO' | 'NO_WISH'
@@ -92,14 +101,29 @@ export interface FullTimeEntry {
 // Freiberufliche und teilzeitbeschäftigte Dozierende (vorläufig: Wochenraster)
 // ---------------------------------------------------------------------------
 
-export type GridMark = 'AVAILABLE' | 'ONLINE_ONLY' | 'UNAVAILABLE'
+/** PREFERRED = verfügbar und am liebsten dann. */
+export type GridMark = 'PREFERRED' | 'AVAILABLE' | 'ONLINE_ONLY' | 'UNAVAILABLE'
 
 /** Raster: je Wochentag ein Eintrag pro Zeitslot (siehe PlanningConfig.slotMinutes). */
 export type WeekGrid = Record<Weekday, GridMark[]>
 
+/**
+ * Abweichung an einem bestimmten Datum im Theorieblock (optional), z. B. „am 12.02. geht es
+ * doch nicht“. Gilt nur für dieses Datum und geht dem Wochenraster vor.
+ */
+export interface DateException {
+  /** ISO-Datum (YYYY-MM-DD) innerhalb des Theorieblocks */
+  date: string
+  mark: 'UNAVAILABLE' | 'AVAILABLE'
+  /** null = ganztägig */
+  time: { start: Minutes; end: Minutes } | null
+}
+
 export interface GridEntry {
   kind: 'FREELANCE' | 'PART_TIME'
   grid: WeekGrid
+  /** Abweichungen an einzelnen Tagen, nach Datum sortiert. Leer = keine. */
+  exceptions: DateException[]
   note: string
   /** Gesetzt, wenn die Zeiten „wie im letzten Jahr“ gelten sollen. */
   sameAsPreviousYear: PreviousYearRef | null
@@ -153,9 +177,22 @@ export interface TimeWindow {
   source: WindowSource
 }
 
+/** Zeitfenster an einem bestimmten Datum – überschreibt dort die wöchentlichen Fenster. */
+export interface DateWindow {
+  date: string
+  weekday: Weekday
+  start: Minutes
+  end: Minutes
+  status: 'AVAILABLE' | 'UNAVAILABLE'
+  hardness: 'HARD'
+}
+
 export interface AvailabilityResult {
   lecturerKind: LecturerKind
+  /** Wöchentlich wiederkehrende Zeitfenster. */
   windows: TimeWindow[]
+  /** Abweichungen an einzelnen Daten (nur Freiberufler/Teilzeit, sonst leer). */
+  exceptions: DateWindow[]
   /** Tagesübergreifende Beschränkungen, die sich nicht als Zeitfenster ausdrücken lassen. */
   constraints: {
     maxUnitsPerDay: { units: number; hardness: Hardness } | null
@@ -177,7 +214,7 @@ export interface AvailabilityResult {
 // Übergabeformat an die Hauptanwendung (Stundenplanung)
 // ---------------------------------------------------------------------------
 
-export const EXPORT_SCHEMA_VERSION = 1
+export const EXPORT_SCHEMA_VERSION = 2
 
 export interface AvailabilityExport {
   schemaVersion: typeof EXPORT_SCHEMA_VERSION

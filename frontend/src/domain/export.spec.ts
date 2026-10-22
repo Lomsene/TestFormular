@@ -19,7 +19,7 @@ describe('Übergabeformat', () => {
   )
 
   it('normalisiert Personendaten und enthält Antworten und Zeitfenster', () => {
-    expect(data.schemaVersion).toBe(1)
+    expect(data.schemaVersion).toBe(2)
     expect(data.lecturer).toEqual({
       lastName: 'Großmann',
       firstName: 'Jürgen',

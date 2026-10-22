@@ -1,11 +1,11 @@
-# Übergabeformat `AvailabilityExport` (schemaVersion 1)
+# Übergabeformat `AvailabilityExport` (schemaVersion 2)
 
 Ein Dokument pro Person und Theorieblock. Typdefinition: `src/domain/types.ts`.
 Alle Uhrzeiten sind **Minuten seit Mitternacht** (780 = 13:00). Wochentage: `MO TU WE TH FR SA`.
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "submittedAt": "2026-10-14T10:00:00.000Z",
   "block": { "id": "2027-01", "label": "Theorieblock Januar bis März 2027", "start": "2027-01-04", "end": "2027-03-26" },
   "lecturer": { "lastName": "Müller", "firstName": "Max", "email": "max.mueller@dhsh.de", "kind": "FULL_TIME" },
@@ -32,6 +32,7 @@ Alle Uhrzeiten sind **Minuten seit Mitternacht** (780 = 13:00). Wochentage: `MO 
       { "weekday": "FR", "start": 480, "end": 780,  "status": "AVAILABLE",   "hardness": "HARD", "source": { "type": "DEFAULT" } },
       { "weekday": "FR", "start": 780, "end": 1080, "status": "UNAVAILABLE", "hardness": "SOFT", "source": { "type": "WISH", "rank": 1 } }
     ],
+    "exceptions": [],                            // nur Freiberufler/Teilzeit, siehe unten
     "constraints": { "maxUnitsPerDay": null },   // z. B. { "units": 4, "hardness": "SOFT" }
     "priorityClaim": true,
     "pendingPreviousYear": false
@@ -52,6 +53,46 @@ Alle Uhrzeiten sind **Minuten seit Mitternacht** (780 = 13:00). Wochentage: `MO 
 | `priorityClaim`      | bool                                                        | Wunsch wurde zuletzt nicht erfüllt → Strafgewicht erhöhen (Merkblatt) |
 | `pendingPreviousYear`| bool                                                        | „wie im letzten Jahr“ gewählt, Vorjahresdaten lagen nicht vor → aus Vorjahreseinreichung ergänzen |
 
+## Freiberufler/Teilzeit: bevorzugte Zeiten und Abweichungen an einzelnen Tagen
+
+```jsonc
+"answers": {
+  "kind": "FREELANCE",
+  "grid": { "MO": ["AVAILABLE", "PREFERRED", …], … },   // je Wochentag ein Eintrag pro 30-Min.-Slot
+  "exceptions": [
+    { "date": "2027-01-19", "mark": "UNAVAILABLE", "time": null },                      // ganztägig
+    { "date": "2027-02-10", "mark": "AVAILABLE",   "time": { "start": 480, "end": 720 } }
+  ],
+  "note": "",
+  "sameAsPreviousYear": null
+},
+"result": {
+  "windows": [ … wöchentliche Fenster, auch status "PREFERRED" … ],
+  "exceptions": [
+    { "date": "2027-01-19", "weekday": "TU", "start": 480, "end": 1080, "status": "UNAVAILABLE", "hardness": "HARD" },
+    { "date": "2027-02-10", "weekday": "WE", "start": 480, "end": 720,  "status": "AVAILABLE",   "hardness": "HARD" }
+  ]
+}
+```
+
+- `grid`-Werte: `PREFERRED` (verfügbar, am liebsten dann), `AVAILABLE`, `ONLINE_ONLY`, `UNAVAILABLE`.
+  `PREFERRED`-Fenster sind wie `AVAILABLE` sicher verfügbar (`HARD`). Die Präferenz selbst
+  gehört als Bonus in die Zielfunktion.
+- `result.exceptions` sind **optional** (leeres Array = keine) und gelten nur an diesem Datum.
+  Für diesen Zeitraum **ersetzen** sie die wöchentlichen `windows`: `UNAVAILABLE` = geht an
+  dem Tag doch nicht, `AVAILABLE` = geht an dem Tag ausnahmsweise doch.
+- Es werden nur Daten innerhalb von `block.start`…`block.end` übergeben, sortiert nach Datum.
+- Bei Hauptamtlichen ist `result.exceptions` immer `[]`.
+
+### Änderungen gegenüber schemaVersion 1
+
+- neu: Terminwunsch `{ "kind": "DAY_RANGE", "weekday": "WE", "start": 600, "end": 840 }`
+  („mittwochs nur von 10 bis 14 Uhr“). Davor und danach entstehen `UNAVAILABLE`/`SOFT`-Fenster
+  mit `source: { "type": "WISH" }`, wie bei `DAY_TIME`.
+- neu: `answers.exceptions` (Freiberufler/Teilzeit) und `result.exceptions` (alle)
+- neu: Rasterwert `PREFERRED` bei Freiberufler/Teilzeit
+- Ältere Einreichungen (Version 1) haben diese Felder nicht und sind als „leer“ zu lesen.
+
 ## „Wie im letzten Jahr“
 
 `answers.sameAsPreviousYear` (Hauptamtlich: je `wishes` und `presidium`, Raster: direkt) ist
@@ -66,3 +107,4 @@ Zusicherungen:
 - Die Fenster decken jeden Lehrtag aus `frame.teachingDays` **lückenlos** von `dayStart` bis
   `dayEnd` ab, ohne Überlappung, sortiert nach Tag und Uhrzeit.
 - Bei Freiberufler/Teilzeit (`source.type = "GRID"`) sind alle Fenster `HARD`.
+- Abweichungen an einzelnen Daten stehen nur in `result.exceptions`, nie in `windows`.
